@@ -28,6 +28,8 @@ function! HelpCmd()
 	echo "  \\undo      -- open undo tree"
 	echo "  \\tag       -- open tag bar"
 	echo "  \\ctrl+f    -- search file"
+	echo "  cp(P)       -- copy selected to system clipboard (P:拷贝当前行)"
+	echo "  cv(V)       -- paste from system clipboard (V: 粘贴到当前行)"
 	echo "\n"
 endfunction
 
@@ -45,6 +47,7 @@ let g:tagbar_width = 20
 " 隐藏标签栏
 let g:tagbar_auto_open = 0
 
+" set clipboard=unnamedplus
 let g:system_copy#copy_command='xclip -sel clipboard'
 let g:system_copy#paste_command='xclip -sel clipboard -o'
 
@@ -78,4 +81,3 @@ nnoremap <silent> <leader>tag :Tagbar<CR>
 
 " Ctrl + f
 nnoremap <silent> <c-f> :CtrlP<CR>
-
