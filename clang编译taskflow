@@ -1,0 +1,22 @@
+
+# clang编译taskflow
+
+```shell
+
+#安装clang-10
+sudo apt-get install clang-10
+
+# 修改默认c++编译器
+update-alternatives --config c++
+
+# 安装libc++
+sudo apt-get install libc++-dev
+sudo apt-get install libc++abi-dev
+
+mkdir build && cd ./build
+
+cmake -DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON -DCMAKE_CXX_EXTENSIONS=OFF -DCMAKE_CXX_COMPILER_ID=Clang -DCMAKE_CXX_COMPILER_VERSION=10.0.0 -DCMAKE_CXX_STANDARD_COMPUTED_DEFAULT=17 -DCMAKE_CXX_EXTENSIONS_COMPUTED_DEFAULT=OFF -DCMAKE_INSTALL_PREFIX=`pwd`/installed  ../
+
+make -j8
+
+```
