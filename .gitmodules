@@ -1,0 +1,4 @@
+[submodule "jupyter-cling"]
+	url  = https://gitee.com/ctl2022/doc
+	path = jupyter-cling
+
