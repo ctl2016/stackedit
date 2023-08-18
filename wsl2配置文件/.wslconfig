@@ -1,0 +1,7 @@
+[wsl2]
+ processors=8
+ memory=8GB
+ swap=8GB
+ localhostForwarding=true
+ swapfile=D:\\wsl-disk\\swap.vhdx
+ kernel=D:\\wsl-disk\\bzImage
