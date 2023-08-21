@@ -39,6 +39,8 @@ RUN mkdir -p /home/notebooker/micromamba \
     && micromamba env list \
     && micromamba install xeus-cling==0.15.3 -y -c conda-forge \
     && micromamba install notebook==7.0.2 -y -c conda-forge \
+    && micromamba install libcxx==9.0.1 -y -c conda-forge \
+    && micromamba install libcxxabi==9.0.1 -y -c conda-forge \
     && micromamba clean --all --yes
 
 USER root
@@ -50,7 +52,11 @@ RUN apt-get -qq -y remove curl \
 
 COPY    start-notebook.sh /usr/bin
 USER    notebooker
+COPY    test.cpp /home/notebooker
 WORKDIR /home/notebooker
-CMD     micromamba shell init -s bash -p /home/notebooker/micromamba \
-	&& source ~/.bashrc && start-notebook.sh
-
+CMD     mkdir -p /work \
+	&& cd /work \
+	&& export MAMBA_ROOT_PREFIX=/home/notebooker/micromamba \
+	&& eval "$(micromamba shell hook --shell bash)" \
+	&& micromamba activate \
+	&& jupyter lab --ip='*' --port=8888 --no-browser
