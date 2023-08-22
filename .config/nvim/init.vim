@@ -34,6 +34,11 @@ function! HelpCmd()
 endfunction
 
 colorscheme codedark
+set number
+set tabstop=4
+set expandtab
+set shiftwidth=4
+set softtabstop=4
 
 let g:python3_host_prog='python3'
 let g:python_host_prog='python2'
@@ -81,3 +86,4 @@ nnoremap <silent> <leader>tag :Tagbar<CR>
 
 " Ctrl + f
 nnoremap <silent> <c-f> :CtrlP<CR>
+
