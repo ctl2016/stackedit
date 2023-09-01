@@ -27,7 +27,7 @@ if [[ "$0" =~ "bash" ]];then # source
     CUR_FILE=""
 else
     DIR=$(
-        cd $(dirname $0)
+        cd "$(dirname "$0")" || exit 1
         pwd
     )
 fi
@@ -35,8 +35,8 @@ fi
 # DOIP SOCKET PORT
 
 TCP_DATA=13400
-UDP_DISCOVERY=13400
-UDP_DISCOVERY_SEND=13400
+# UDP_DISCOVERY=13400
+# UDP_DISCOVERY_SEND=13400
 
 LOG_PATH="$DIR/doip_client_logs"
 FILE_LOG="$LOG_PATH/doip_client.log"
@@ -45,7 +45,7 @@ TMP_PATH="$LOG_PATH/tmp" # use tmpfs
 mkdir -p "$TMP_PATH"
 
 if [ x"$(df -h | grep -o "$TMP_PATH")" != x"$TMP_PATH" ];then
-    sudo mount -t tmpfs none $TMP_PATH
+    sudo mount -t tmpfs none "$TMP_PATH"
 fi
 
 FILE_SOCK_ERR="$TMP_PATH/file_sock_err"
@@ -106,16 +106,23 @@ declare -A LEVEL_COLOR=(
 __print_cls() {
     local level="$1"
     local p="$2"
-    local f="$2"
-    local last=${f:0-2}
-    local tm="[$(date '+%02d%H:%M:%S')]"
+    local tm
+    local last
     local call_line="[L${BASH_LINENO[1]}]"
     local blank=" "
+    local info;
 
+    tm="[$(date '+%02d%H:%M:%S')]"
     # output file
-    [[ x"$last" != x"\n" ]] && last="\n" || last=""
-    local info=$(${LEVEL_COLOR[$level]} "[${level}]${blank}${f}")
-    printf "${tm}[$TOP_SHELL_PID]${call_line}${info}${last}" >> "$FILE_LOG"
+    info=$(${LEVEL_COLOR[$level]} "[${level}]${blank}${p}")
+
+    last=${p:0-2}
+
+    if [ x"$last" != x"\n" ];then
+        last="\n"
+    fi
+
+    printf "%b" "${tm}[$TOP_SHELL_PID]${call_line}${info}${last}" >> "$FILE_LOG"
 
     # output console
     if [[ ! $LOG_LEVEL =~ $level ]];then
@@ -124,10 +131,10 @@ __print_cls() {
 
     last=${p:0-2}
     max_len=$(stty size 2>/dev/null |awk '{print $2}')
-    max_len=$(($max_len))
-    [[ $max_len -gt 0 ]] && max_len=$[ $max_len - ${#tm} -${#call_line} - ${#level} - ${#blank} - 2 ]
+    [ -z "$max_len" ] && max_len=0
+    [[ $max_len -gt 0 ]] && max_len=$((max_len - ${#tm} -${#call_line} - ${#level} - ${#blank} - 2))
     local ignore=""
-    [[ $max_len -gt 0 ]] && [[ $max_len -lt ${#p} ]] && ignore=" ..." && max_len=$(($max_len - ${#ignore}))
+    [[ $max_len -gt 0 ]] && [[ $max_len -lt ${#p} ]] && ignore=" ..." && max_len=$((max_len - ${#ignore}))
     [[ $max_len -gt 0 ]] && p=${p:0:$max_len}
 
     if [[ x"$last" != x"\n" ]] || [[ -z "$ignore" ]];then 
@@ -135,12 +142,11 @@ __print_cls() {
     fi
 
     info=$(${LEVEL_COLOR[$level]} "[${level}]${blank}${p}${ignore}")
-    printf "\r\033[2K${tm}${call_line}${info}${last}"
+    printf "%b" "\r\033[2K${tm}${call_line}${info}${last}"
 }
 
 function print_error() {
     local i=$1
-    local c=$2
     [[ -z "$i" ]] && echo && return 0
     local info=${i:0:$MAX_SIZE_PRINT}
     [[ ${#i} -gt $MAX_SIZE_PRINT ]] && i="$info ..."
@@ -149,7 +155,6 @@ function print_error() {
 
 function print_warning() {
     local i=$1
-    local c=$2
     [[ -z "$i" ]] && echo && return 0
     local info=${i:0:$MAX_SIZE_PRINT}
     [[ ${#i} -gt $MAX_SIZE_PRINT ]] && i="$info ..."
@@ -158,7 +163,6 @@ function print_warning() {
 
 function print_debug() {
     local i=$1
-    local c=$2
     [[ -z "$i" ]] && echo && return 0
     local info=${i:0:$MAX_SIZE_PRINT}
     [[ ${#i} -gt $MAX_SIZE_PRINT ]] && i="$info ..."
@@ -167,7 +171,6 @@ function print_debug() {
 
 function print_info() {
     local i=$1
-    local c=$2
     [[ -z "$i" ]] && echo && return 0
     local info=${i:0:$MAX_SIZE_PRINT}
     [[ ${#i} -gt $MAX_SIZE_PRINT ]] && i="$info ..."
@@ -176,7 +179,6 @@ function print_info() {
 
 function print_success() {
     local i=$1
-    local c=$2
     [[ -z "$i" ]] && echo && return 0
     local info=${i:0:$MAX_SIZE_PRINT}
     [[ ${#i} -gt $MAX_SIZE_PRINT ]] && i="$info ..."
@@ -193,7 +195,7 @@ function get_byte() {
     local offset=$(($2))
     local len="$3"
 
-    if [ $params -lt 3 ]; then
+    if [ "$params" -lt 3 ]; then
         bytes="$(cat)"
         offset=$1
         len=$2
@@ -201,23 +203,33 @@ function get_byte() {
 
     [[ $len -lt 0 ]] && len=""
 
-    offset=$(($offset + 1))
+    offset=$((offset + 1))
 
     [[ $params -ne 0 ]] && [[ ${#bytes}%2 -ne 0 ]] && byte="0$bytes"
 
     if [ -n "$len" ]; then
-        echo -ne ${bytes:0-$(($offset * 2)):$(($len * 2))}
+        echo -ne "${bytes:0-$((offset * 2)):$((len * 2))}"
     else
-        echo -ne ${bytes:0-$(($offset * 2))}
+        echo -ne "${bytes:0-$((offset * 2))}"
     fi
 }
 
 function str_to_hex() {
-    [[ $# -ne 0 ]] && echo -ne "$@" | xxd -r -ps || xxd -r -ps
+
+    if [ $# -ne 0 ];then
+        echo -ne "$@" | xxd -r -ps
+    else
+        xxd -r -ps
+    fi
 }
 
 function hex_to_str() {
-    [[ $# -ne 0 ]] && echo -ne "$@" | xxd -ps | tr -d '\n ' || xxd -ps | tr -d '\n '
+
+    if [ $# -ne 0 ];then
+        echo -ne "$@" | xxd -ps | tr -d '\n '
+    else
+        xxd -ps | tr -d '\n '
+    fi
 }
 
 # 0xabcd, 123, 0x0123
@@ -237,19 +249,23 @@ function ping_test() {
 	local i=1
 	local rt=255
 
-	while [[ true ]]
+	while true
 	do
 		# print_info "[Line:$LINENO] ping $ip ..."
-		local pin=`ping -w 2 -c 1 $IP 2>&1`
-		local valid=`echo -e "$pin" | sed -n -r -e 's/.*(Destination Host Unreachable).*/\1/p'`
-		local loss=`echo -e "$pin" | sed -n -r -e 's/.* ([0-9]{1,3})% packet loss.*/\1/p'`
+        local pin
+		local valid
+        local loss
 
-		if [ $loss -eq 100 ];then
+        pin=$(ping -w 2 -c 1 $IP 2>&1)
+		valid=$(echo -e "$pin" | sed -n -r -e 's/.*(Destination Host Unreachable).*/\1/p')
+		loss=$(echo -e "$pin" | sed -n -r -e 's/.* ([0-9]{1,3})% packet loss.*/\1/p')
+
+		if [ "$loss" -eq 100 ];then
             rt=255
 
-			if [ $i -lt $ping_max ];then
-				print_warning "$call_line warning($i) ping($IP) $valid loss:${loss}%%, retry ...\n" >&2
-				i=$(($i+1))
+			if [ "$i" -lt "$ping_max" ];then
+				print_warning "$call_line warning($i) ping($IP) $valid loss:${loss}%, retry ...\n" >&2
+				i=$((i+1))
 			else
 				#print_info "" >&2
 				print_warning "$call_line error($i) ping($IP) max count ...\n" >&2
@@ -278,13 +294,13 @@ function sock_tcp_connect() {
         rt=$?
         exec 2>&1
         if [ $rt -ne 0 ];then
-            print_warning "sock_tcp_connect($i/$max_i) $(cat $FILE_SOCK_ERR | head -n1)" && sleep 1
-            i=$(($i+1))
+            print_warning "sock_tcp_connect($i/$max_i) $(head -n1 < "$FILE_SOCK_ERR")" && sleep 1
+            i=$((i+1))
         fi
     done
 
     if [ $rt -ne 0 ];then
-        print_error "sock_tcp_connect($max_i) $(cat $FILE_SOCK_ERR | head -n1)\n"
+        print_error "sock_tcp_connect($max_i) $(head -n1 < "$FILE_SOCK_ERR")\n"
     else
         print_success "sock_tcp_connect($i/$max_i) ok !\n"
     fi
@@ -300,37 +316,37 @@ function sock_tcp_send() {
 
     echo -ne "" > "$file_sock_recv"
 
-    [[ -s $FILE_SOCK_ERR ]] && echo "" > $FILE_SOCK_ERR
+    [[ -s $FILE_SOCK_ERR ]] && echo "" > "$FILE_SOCK_ERR"
 
     if [ -n "$file" ];then
         timeout $tmout cat "$file" 2>"$FILE_SOCK_ERR" >&8
         rt=${PIPESTATUS[0]}
-        if [ $rt -eq 124 ];then
+        if [ "$rt" -eq 124 ];then
             echo "sock_tcp_send: Connection timed out" > "$FILE_SOCK_ERR"
         fi
     else
         cat 2>"$FILE_SOCK_ERR" >&8
         rt=${PIPESTATUS[0]}
     fi
-    [[ $rt -ne 0 ]] && print_error "tcp send error rt:$rt, $(cat $FILE_SOCK_ERR | head -n1)\n"
-    return $rt
+    [[ $rt -ne 0 ]] && print_error "tcp send error rt:$rt, $(head -n1 < "$FILE_SOCK_ERR")\n"
+    return "$rt"
 }
 
 function get_sock_recv() {
     cat >> "$FILE_SOCK_RECV_RES" 2> "$FILE_SOCK_ERR" <&8
-    print_error "get_sock_recv exit, pid:$(cat $FILE_SOCK_RECV_PID) !\n"
+    print_error "get_sock_recv exit, pid:$(cat "$FILE_SOCK_RECV_PID") !\n"
     sleep 1
     echo -ne "" > "$FILE_SOCK_RECV_PID"
-    echo -ne "" > $file
+    echo -ne "" > "$file"
 }
 
 function get_sock_recv_size() {
 
     local file=$FILE_SOCK_RECV_RES
 
-    while [[ true ]]; do
+    while true; do
         local bytes=$(($(wc -c "$file" | awk '{print $1}')))
-        echo $bytes > $FILE_SOCK_RECV_SIZE
+        echo "$bytes" > "$FILE_SOCK_RECV_SIZE"
         sync -f "$file"
         sync -f "$FILE_SOCK_RECV_SIZE"
         sleep 0.01
@@ -348,26 +364,26 @@ function sock_tcp_recv() {
     local bytes_old=0
 
     [[ -z "$file" ]] && return 255
-    [[ -s $FILE_SOCK_ERR ]] && echo "" > $FILE_SOCK_ERR
+    [[ -s "$FILE_SOCK_ERR" ]] && echo "" > "$FILE_SOCK_ERR"
 
     exist_sock_recv_proc 0
     exist_sock_recv_size_proc 0
 
-    bytes_old=$(( $(cat $FILE_SOCK_RECV_SIZE) ))
+    bytes_old=$(( $(cat "$FILE_SOCK_RECV_SIZE") ))
 
     rt=0
 
     while [[ $rt -eq 0 ]] && [[ $bytes_recv -le $bytes_old ]] && [[ $i -lt $max_i ]];do
 
         if [[ -s $FILE_SOCK_ERR ]]; then
-            print_error "sock_tcp_recv($i/$max_i) error, $(cat $FILE_SOCK_ERR | head -n1)\n"
+            print_error "sock_tcp_recv($i/$max_i) error, $(head -n1 < "$FILE_SOCK_ERR")\n"
             rt=1
             break
         fi
 
-        bytes_recv=$(( $(cat $FILE_SOCK_RECV_SIZE) ))
+        bytes_recv=$(( $(cat "$FILE_SOCK_RECV_SIZE") ))
 
-        i=$(($i+1))
+        i=$((i+1))
 
         if [[ $bytes_recv -eq 0 ]];then
             print_warning "sock_tcp_recv($i/$max_i) recv $bytes_recv bytes, old: $bytes_old, continue ..."
@@ -380,7 +396,7 @@ function sock_tcp_recv() {
                 rt=$?
                 if [ $rt -ne 0 ];then
                     local err="ping: Connection timed out !"
-                    echo "$err" > $FILE_SOCK_ERR
+                    echo "$err" > "$FILE_SOCK_ERR"
                     print_error "$err"
                 fi
             fi
@@ -436,51 +452,51 @@ RSID_OFFSET=0x40
 
 # Generic doip header negative acknowledge codes
 
-DOIP_E_INCORRECT_PATTERN_FORMAT=0x00
-DOIP_E_UNKNOWN_PAYLOAD_TYPE=0x01
-DOIP_E_MESSAGE_TO_LARGE=0x02
-DOIP_E_OUT_OF_MEMORY=0x03
-DOIP_E_INVALID_PAYLOAD_LENGTH=0x04
+# DOIP_E_INCORRECT_PATTERN_FORMAT=0x00
+# DOIP_E_UNKNOWN_PAYLOAD_TYPE=0x01
+# DOIP_E_MESSAGE_TO_LARGE=0x02
+# DOIP_E_OUT_OF_MEMORY=0x03
+# DOIP_E_INVALID_PAYLOAD_LENGTH=0x04
 
 # Routing activation type
 
-DOIP_ACTIVATION_DEFAULT=0x00
-DOIP_ACTIVATION_WWH_OBD=0x01
-DOIP_ACTIVATION_CENTRAL_SECURITY=0xE0
+# DOIP_ACTIVATION_DEFAULT=0x00
+# DOIP_ACTIVATION_WWH_OBD=0x01
+# DOIP_ACTIVATION_CENTRAL_SECURITY=0xE0
 
 # Routing activation response code
 
-DOIP_E_UNKNOWN_SA=0x00
-DOIP_E_ALL_SOCKETS_REGISTERED=0x01
-DOIP_E_SA_DIFFERENT=0x02
-DOIP_E_SA_ALREADY_ACTIVATED=0x03
-DOIP_E_MISSING_AUTHENTICATION=0x04
-DOIP_E_REJECT_CONFIRMATION=0x05
-DOIP_E_UNSUPPORTED_ROUTING_ACTIVATION_TYPE=0x06
-DOIP_E_ACTIVATE_SUCCESS=0x10
-DOIP_E_CONFRIMATION_REQUIRED=0x11
+# DOIP_E_UNKNOWN_SA=0x00
+# DOIP_E_ALL_SOCKETS_REGISTERED=0x01
+# DOIP_E_SA_DIFFERENT=0x02
+# DOIP_E_SA_ALREADY_ACTIVATED=0x03
+# DOIP_E_MISSING_AUTHENTICATION=0x04
+# DOIP_E_REJECT_CONFIRMATION=0x05
+# DOIP_E_UNSUPPORTED_ROUTING_ACTIVATION_TYPE=0x06
+# DOIP_E_ACTIVATE_SUCCESS=0x10
+# DOIP_E_CONFRIMATION_REQUIRED=0x11
 
 # Diagnostic message negative acknowledge codes
 
-DOIP_E_DIAG_INVALID_SA=0x02         # Invalid Source Address
-DOIP_E_DIAG_UNKNOWN_TA=0x03         # Unknown Target Address
-DOIP_E_DIAG_MESSAGE_TO_LARGE=0x04   # Diagnostic Message too large
-DOIP_E_DIAG_OUT_OF_MEMORY=0x05      # Out of memory
-DOIP_E_DIAG_TARGET_UNREACHABLE=0x06 # Target unreachable
-DOIP_E_DIAG_UNKNOWN_NETWORK=0x07    # Unknown network
-DOIP_E_DIAG_TP_ERROR=0x08           # Transport protocol error
+# DOIP_E_DIAG_INVALID_SA=0x02         # Invalid Source Address
+# DOIP_E_DIAG_UNKNOWN_TA=0x03         # Unknown Target Address
+# DOIP_E_DIAG_MESSAGE_TO_LARGE=0x04   # Diagnostic Message too large
+# DOIP_E_DIAG_OUT_OF_MEMORY=0x05      # Out of memory
+# DOIP_E_DIAG_TARGET_UNREACHABLE=0x06 # Target unreachable
+# DOIP_E_DIAG_UNKNOWN_NETWORK=0x07    # Unknown network
+# DOIP_E_DIAG_TP_ERROR=0x08           # Transport protocol error
 
 # Vehicle identification type
 
-DOIP_IDENTIFICATION_ALL=0x00
-DOIP_IDENTIFICATION_VIN=0x01
-DOIP_IDENTIFICATION_EID=0x02
+# DOIP_IDENTIFICATION_ALL=0x00
+# DOIP_IDENTIFICATION_VIN=0x01
+# DOIP_IDENTIFICATION_EID=0x02
 
 ########################## DOIP request function ################################
 
 function msg_doip_head() {
     local cmd=$1 #8001
-    local is_func_addr=$2
+    # local is_func_addr=$2
     local payload_len=$3
 
     #local TAR_ADDR=0x0017
@@ -506,8 +522,8 @@ function alive_check_resp() {
     local rt=0
 
     while [[ $rt -eq 0 ]] && [[ $i -lt $iMax ]];do
-        i=$(($i+1))
-        print_info "call ${FUNCNAME}"
+        i=$((i+1))
+        print_info "call ${FUNCNAME[0]}"
         msg_doip_send "$(msg_doip_head $DOIP_PROTO_ALIVE_CHECK_RESP 0 2)${DOIP_PROTOCOL_SA_2_BYTES}" 0
         rt=$?
         if [ $rt -eq 0 ];then
@@ -522,7 +538,7 @@ function alive_check_resp() {
 }
 
 function routing_acti_req() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
     msg_doip_send "$(msg_doip_head $DOIP_PROTO_ROUTING_ACTIVATION_REQ 0 7)${DOIP_PROTOCOL_SA_2_BYTES}0000000000"
     local rt=$?
     return $rt
@@ -535,9 +551,13 @@ function routing_acti_resp() {
     local payload=$1
 
     if [ ${#payload} -ge 9 ]; then
-        local sa=$(get_byte $payload -1 2)
-        local ta=$(get_byte $payload -3 2)
-        local resp_code=$(get_byte $payload -5 1)
+        local sa
+        local ta
+        local resp_code
+
+        sa=$(get_byte "$payload" -1 2)
+        ta=$(get_byte "$payload" -3 2)
+        resp_code=$(get_byte "$payload" -5 1)
 
         echo "routing_acti_resp $resp_code" >>"$FILE_RECV_DIAG_MSG_RES"
 
@@ -558,7 +578,8 @@ function routing_acti_resp() {
 
 function diag_msg_head() {
     local uds="$*"
-    local msg="$(msg_doip_head ${DOIP_PROTO_DIAGNOSTIC_REQ} 0 $((4 + ${#uds} / 2)))${DOIP_PROTOCOL_SA_2_BYTES}${DOIP_PROTOCOL_TA_2_BYTES}${uds}"
+    local msg
+    msg="$(msg_doip_head ${DOIP_PROTO_DIAGNOSTIC_REQ} 0 $((4 + ${#uds} / 2)))${DOIP_PROTOCOL_SA_2_BYTES}${DOIP_PROTOCOL_TA_2_BYTES}${uds}"
     echo -ne "$msg"
 }
 
@@ -570,37 +591,44 @@ function diag_msg_resp_8001() {
     local payload=$1
 
     if [ ${#payload} -ge 7 ]; then
-
-        local sa=$(get_byte $payload -1 2)
-        local ta=$(get_byte $payload -3 2)
-        local uds=$(get_byte $payload -5 -1)
-        local sid=$(get_byte $uds -1 1)
+    
+        local sa
+        local ta
+        local uds
+        local sid
+        sa=$(get_byte "$payload" -1 2)
+        ta=$(get_byte "$payload" -3 2)
+        uds=$(get_byte "$payload" -5 -1)
+        sid=$(get_byte "$uds" -1 1)
 
         if [[ 0x$sid -eq $DOIP_RESP_CODE_NEGATIVE ]]; then
-            sid=$(get_byte $uds -2 1)
-            local nrc=$(get_byte $uds -3 1)
-            print_warning "${FUNCNAME} sa:$sa, ta:$ta, sid:$sid, uds:$uds, nrc:$nrc\n"
+            sid=$(get_byte "$uds" -2 1)
+            local nrc
+            nrc=$(get_byte "$uds" -3 1)
+            print_warning "${FUNCNAME[0]} sa:$sa, ta:$ta, sid:$sid, uds:$uds, nrc:$nrc\n"
 
             if [[ 0x$nrc -eq $DOIP_RESP_CODE_PENDING ]]; then
                 # set flag to recv again
-                echo "${FUNCNAME} $DOIP_RESP_CODE_PENDING" >>"$FILE_RECV_DIAG_MSG_RES"
+                echo "${FUNCNAME[0]} $DOIP_RESP_CODE_PENDING" >>"$FILE_RECV_DIAG_MSG_RES"
                 rt=0
+            else
+                echo "${FUNCNAME[0]} $uds" >> "$FILE_RECV_DIAG_MSG_RES"
             fi
         elif [[ 0x$sid -ge $RSID_OFFSET ]]; then
             sid=$(hex_calc "0x$sid - $RSID_OFFSET")
-            echo "${FUNCNAME} $uds" >>"$FILE_RECV_DIAG_MSG_RES"
-            print_info "${FUNCNAME} sa:$sa, ta:$ta, sid:$sid, uds:$uds"
+            echo "${FUNCNAME[0]} $uds" >>"$FILE_RECV_DIAG_MSG_RES"
+            print_info "${FUNCNAME[0]} sa:$sa, ta:$ta, sid:$sid, uds:$uds"
 
             if [ -n "${UDS_MSG_RESP[$sid]}" ]; then
-                ${UDS_MSG_RESP[$sid]} $(get_byte $uds -2 -1)
+                ${UDS_MSG_RESP[$sid]} "$(get_byte "$uds" -2 -1)"
                 rt=0
             else
                 print_warning "not impliment uds function, sid: $sid\n"
             fi
         fi
     else
-        print_error "${FUNCNAME} payload len: ${#payload}, payload:$payload\n"
-        echo "${FUNCNAME} error" >>"$FILE_RECV_DIAG_MSG_RES"
+        print_error "${FUNCNAME[0]} payload len: ${#payload}, payload:$payload\n"
+        echo "${FUNCNAME[0]} error" >>"$FILE_RECV_DIAG_MSG_RES"
     fi
 
     return $rt
@@ -614,15 +642,18 @@ function diag_msg_resp_8002() {
     local payload=$1
 
     if [ ${#payload} -ge 5 ]; then
-        local sa=$(get_byte $payload -1 2)
-        local ta=$(get_byte $payload -3 2)
-        local resp_code=$(get_byte $payload -5 1)
-        print_info "${FUNCNAME}: sa: $sa, ta: $ta, resp: $resp_code"
-        echo "${FUNCNAME} $resp_code" >>"$FILE_RECV_DIAG_MSG_RES"
+        local sa
+        local ta
+        local resp_code
+        sa=$(get_byte "$payload" -1 2)
+        ta=$(get_byte "$payload" -3 2)
+        resp_code=$(get_byte "$payload" -5 1)
+        print_info "${FUNCNAME[0]}: sa: $sa, ta: $ta, resp: $resp_code"
+        echo "${FUNCNAME[0]} $resp_code" >>"$FILE_RECV_DIAG_MSG_RES"
         rt=0
     else
-        print_error "${FUNCNAME} payload len: ${#payload}, payload:$payload\n"
-        echo "${FUNCNAME} error" >>"$FILE_RECV_DIAG_MSG_RES"
+        print_error "${FUNCNAME[0]} payload len: ${#payload}, payload:$payload\n"
+        echo "${FUNCNAME[0]} error" >>"$FILE_RECV_DIAG_MSG_RES"
     fi
 
     return $rt
@@ -636,15 +667,18 @@ function diag_msg_resp_8003() {
     local payload=$1
 
     if [ ${#payload} -ge 5 ]; then
-        local sa=$(get_byte $payload -1 2)
-        local ta=$(get_byte $payload -3 2)
-        local resp_code=$(get_byte $payload -5 1)
-        print_warning "${FUNCNAME}: sa: $sa, ta: $ta, resp: $resp_code\n"
-        echo "${FUNCNAME} $resp_code" >>"$FILE_RECV_DIAG_MSG_RES"
+        local sa
+        local ta
+        local resp_code
+        sa=$(get_byte "$payload" -1 2)
+        ta=$(get_byte "$payload" -3 2)
+        resp_code=$(get_byte "$payload" -5 1)
+        print_warning "${FUNCNAME[0]}: sa: $sa, ta: $ta, resp: $resp_code\n"
+        echo "${FUNCNAME[0]} $resp_code" >>"$FILE_RECV_DIAG_MSG_RES"
         rt=255
     else
-        print_error "${FUNCNAME} payload len: ${#payload}, payload:$payload\n"
-        echo "${FUNCNAME} error" >>"$FILE_RECV_DIAG_MSG_RES"
+        print_error "${FUNCNAME[0]} payload len: ${#payload}, payload:$payload\n"
+        echo "${FUNCNAME[0]} error" >>"$FILE_RECV_DIAG_MSG_RES"
     fi
 
     return $rt
@@ -673,17 +707,19 @@ function msg_doip_parse() {
 
         if [ $doip_ver -ne $DOIP_PROTOCOL_VERSION ] || [ $doip_ver_rev -ne $calc_ver_rev ]; then
             rt=255
-            G_VAR_MSG_DOIP_PARSE_LEN=$(($G_VAR_MSG_DOIP_PARSE_LEN + 2))
+            G_VAR_MSG_DOIP_PARSE_LEN=$((G_VAR_MSG_DOIP_PARSE_LEN + 2))
             hex_str="${hex_str:2}"
             print_warning "ignore invalid msg:${doip_ver}\n"
             continue
         fi
+        local payload_type
+        local payload_len
+        local frame_len
+        payload_type="0x$(get_byte "$hex_str" -3 2)"
+        payload_len=$((0x$(get_byte "$hex_str" -5 4)))
+        frame_len=$((2 * (DOIP_HEADER_SIZE + payload_len)))
 
-        local payload_type="0x$(get_byte "$hex_str" -3 2)"
-        local payload_len=$((0x$(get_byte "$hex_str" -5 4)))
-        local frame_len=$((2 * ($DOIP_HEADER_SIZE + $payload_len)))
-
-        print_debug "frame bytes:$(($frame_len / 2)), msg:${hex_str:0:$frame_len}"
+        print_debug "frame bytes:$((frame_len / 2)), msg:${hex_str:0:$frame_len}"
         print_debug "payload bytes:$payload_len, payload type:$payload_type"
 
         if [[ ${#hex_str} -lt $frame_len ]]; then
@@ -693,7 +729,7 @@ function msg_doip_parse() {
             break
         else
             if [ -n "${DOIP_MSG_RESP[$payload_type]}" ]; then
-                ${DOIP_MSG_RESP[$payload_type]} ${hex_str:$(($DOIP_HEADER_SIZE * 2)):$(($payload_len * 2))}
+                ${DOIP_MSG_RESP[$payload_type]} "${hex_str:$((DOIP_HEADER_SIZE * 2)):$((payload_len * 2))}"
                 rt=$?
             else
                 print_warning "not impliment doip function, payload type: $payload_type\n"
@@ -703,7 +739,7 @@ function msg_doip_parse() {
                 break
             fi
 
-            G_VAR_MSG_DOIP_PARSE_LEN=$(($G_VAR_MSG_DOIP_PARSE_LEN + $frame_len))
+            G_VAR_MSG_DOIP_PARSE_LEN=$((G_VAR_MSG_DOIP_PARSE_LEN + frame_len))
             hex_str="${hex_str:$frame_len}"
         fi
     done
@@ -725,12 +761,12 @@ function msg_doip_recv() {
     while [[ $rt -eq 0 ]]; do
         sock_tcp_recv "$FILE_SOCK_RECV_RES"
         rt=$?
-        if [ $rt -ne 124 -a $rt -ne 0 ]; then
-            print_error "msg_doip_recv rt: $rt, res: $(cat $FILE_SOCK_RECV_RES)\n"
+        if [ $rt -ne 124 ] && [ $rt -ne 0 ]; then
+            print_error "msg_doip_recv rt: $rt, res: $(cat "$FILE_SOCK_RECV_RES")\n"
             break
         fi
         rt=0
-        str_bytes=$(dd if=$FILE_SOCK_RECV_RES skip=$parsed_bytes iflag=skip_bytes 2>/dev/null | hex_to_str)
+        str_bytes=$(dd if="$FILE_SOCK_RECV_RES" skip="$parsed_bytes" iflag=skip_bytes 2>/dev/null | hex_to_str)
         bytes_num=$((${#str_bytes} / 2))
         #bytes_num=$(($(wc -c "$FILE_SOCK_RECV_RES" | awk '{print $1}')))
 
@@ -753,11 +789,11 @@ function msg_doip_recv() {
             elif [[ $parsed_len -eq ${#str_bytes} ]]; then # parse over
                 break
             else                                           # parse partial
-                parsed_bytes=$(($parsed_bytes + $parsed_len/2))
+                parsed_bytes=$((parsed_bytes + parsed_len/2))
             fi
         fi
 
-        try_cnt=$(($try_cnt + 1))
+        try_cnt=$((try_cnt + 1))
 
         if [ $try_cnt -ge $max_try_cnt ]; then
             print_warning "msg_doip_recv break try_cnt:($try_cnt/$max_try_cnt), recved bytes:$bytes_num, msg:$str_bytes\n"
@@ -796,7 +832,7 @@ function msg_doip_send() {
     local max_send=2
 
     while [[ $rt -ne 0 ]] && [[ $cnt_send -lt $max_send ]];do
-        cnt_send=$(($cnt_send+1))
+        cnt_send=$((cnt_send+1))
         sock_tcp_connect 1
         rt=$?
 
@@ -825,8 +861,9 @@ function msg_doip_send() {
         rt=$?
 
         if [ $rt -eq 0 ];then
-            local last_recv=$(tail -n1 "$FILE_RECV_DIAG_MSG_RES")
+            local last_recv
             local recv_cnt=0
+            last_recv=$(tail -n1 "$FILE_RECV_DIAG_MSG_RES")
 
             # when last recv is 8002 then continue recv 8001 uds content
             while [[ x"$last_recv" == x"diag_msg_resp_8001 $DOIP_RESP_CODE_PENDING" ]] || [[ x"$last_recv" =~ x"diag_msg_resp_8002" ]]; do
@@ -847,7 +884,7 @@ function msg_doip_send() {
                     print_warning "continue last recved msg:\"$last_recv\"\n"
                 fi
 
-                recv_cnt=$(($recv_cnt + 1))
+                recv_cnt=$((recv_cnt + 1))
 
                 #print_info "recv ret: $rt"
             done
@@ -869,71 +906,71 @@ function msg_doip_send() {
 function uds_repsp_sess_ctl_10() {
     uds="$*"
     diag_res="${uds:2}"
-    print_info "${FUNCNAME} uds:${uds}, diag_res:${diag_res}"
-    echo "${FUNCNAME} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
+    print_info "${FUNCNAME[0]} uds:${uds}, diag_res:${diag_res}"
+    echo "${FUNCNAME[0]} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
 }
 
 function uds_repsp_sec_acc_27() {
     uds="$*"
     diag_res="${uds:2}"
-    print_info "${FUNCNAME} uds:${uds}, diag_res:${diag_res}"
-    echo "${FUNCNAME} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
+    print_info "${FUNCNAME[0]} uds:${uds}, diag_res:${diag_res}"
+    echo "${FUNCNAME[0]} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
 }
 
 function uds_write_data_2e() {
     uds="$*"
     diag_res="${uds:2}"
-    print_info "${FUNCNAME} uds:${uds}, diag_res:${diag_res}"
-    echo "${FUNCNAME} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
+    print_info "${FUNCNAME[0]} uds:${uds}, diag_res:${diag_res}"
+    echo "${FUNCNAME[0]} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
 }
 
 function uds_read_data_22() {
     uds="$*"
     diag_res="${uds}"
-    print_info "${FUNCNAME} uds:${uds}, diag_res:${diag_res}"
-    echo "${FUNCNAME} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
+    print_info "${FUNCNAME[0]} uds:${uds}, diag_res:${diag_res}"
+    echo "${FUNCNAME[0]} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
 }
 
 function uds_routine_ctl_31() {
     uds="$*"
     diag_res="${uds}"
-    print_info "${FUNCNAME} uds:${uds}, diag_res:${diag_res}"
-    echo "${FUNCNAME} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
+    print_info "${FUNCNAME[0]} uds:${uds}, diag_res:${diag_res}"
+    echo "${FUNCNAME[0]} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
 }
 
 function uds_dtc_setting_85() {
     uds="$*"
     diag_res="${uds:2}"
-    print_info "${FUNCNAME} uds:${uds}, diag_res:${diag_res}"
-    echo "${FUNCNAME} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
+    print_info "${FUNCNAME[0]} uds:${uds}, diag_res:${diag_res}"
+    echo "${FUNCNAME[0]} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
 }
 
 function uds_comm_ctl_28() {
     uds="$*"
     diag_res="${uds:2}"
-    print_info "${FUNCNAME} uds:${uds}, diag_res:${diag_res}"
-    echo "${FUNCNAME} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
+    print_info "${FUNCNAME[0]} uds:${uds}, diag_res:${diag_res}"
+    echo "${FUNCNAME[0]} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
 }
 
 function uds_file_transfer_38() {
     uds="$*"
     diag_res="${uds:4:8}"
-    print_info "${FUNCNAME} uds:${uds}, diag_res:${diag_res}"
-    echo "${FUNCNAME} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
+    print_info "${FUNCNAME[0]} uds:${uds}, diag_res:${diag_res}"
+    echo "${FUNCNAME[0]} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
 }
 
 function uds_transfer_data_36() {
     uds="$*"
     diag_res="${uds:2}"
-    print_info "${FUNCNAME} uds:${uds}, diag_res:${diag_res}"
-    echo "${FUNCNAME} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
+    print_info "${FUNCNAME[0]} uds:${uds}, diag_res:${diag_res}"
+    echo "${FUNCNAME[0]} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
 }
 
 function uds_transfer_exit_37() {
     uds="$*"
     diag_res="${uds:2}"
-    print_info "${FUNCNAME} uds:${uds}, diag_res:${diag_res}"
-    echo "${FUNCNAME} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
+    print_info "${FUNCNAME[0]} uds:${uds}, diag_res:${diag_res}"
+    echo "${FUNCNAME[0]} $diag_res" >>"$FILE_RECV_DIAG_MSG_RES"
 }
 
 ################################# uds protocol define ###################################
@@ -955,7 +992,7 @@ UDS_PROTO_READ_DATA_PROG_STATUS=f1db # install status
 UDS_PROTO_READ_DATA_INST_PROGRESS=f1da # install progress
 UDS_PROTO_READ_DATA_SW=f1bc            # software info
 UDS_PROTO_READ_DATA_HW=f1bd            # hardware info
-UDS_PROTO_READ_DATA_F18A=f18a
+# UDS_PROTO_READ_DATA_F18A=f18a
 UDS_PROTO_READ_DATA_F170=f170
 UDS_PROTO_READ_DATA_F171=f171
 
@@ -1016,7 +1053,7 @@ function uds_calc_key_673() {
     # revert seed's bytes
 
     for ((i=0; i < 4; ++i));do
-        rSeed=${rSeed}$(get_byte $seed1 $i 1)
+        rSeed=${rSeed}$(get_byte "$seed1" "$i" 1)
     done
 
     rSeed=$((0x$rSeed))
@@ -1024,8 +1061,8 @@ function uds_calc_key_673() {
     # calc seed2 by seed1
 
     for ((i=0; i < 16; i++));do
-        seed2=$(( $seed2 | (($rSeed & (1 << $i)) << (31 - 2 * $i)) ))
-        seed2=$(( $seed2 | (($rSeed & (0x80000000 >> $i)) >> (31 - 2 * $i)) ))
+        seed2=$(( seed2 | ((rSeed & (1 << i)) << (31 - 2 * i)) ))
+        seed2=$(( seed2 | ((rSeed & (0x80000000 >> i)) >> (31 - 2 * i)) ))
         # echo "i:$i, seed2: $(hex_calc $seed2)"
     done
 
@@ -1042,7 +1079,7 @@ function uds_calc_key_673() {
     # revert seed's bytes
 
     for ((i=0; i < 4; ++i));do
-        rSeed=${rSeed}$(get_byte $seed2 $i 1)
+        rSeed=${rSeed}$(get_byte "$seed2" "$i" 1)
     done
 
     seed2=$rSeed
@@ -1052,48 +1089,48 @@ function uds_calc_key_673() {
     # calc key1, key2 by seed1, seed2
 
     for ((i=0; i < 4; i++));do
-        local byte=$(( 0x$(get_byte $seed1 $i 1) ^ 0x$(get_byte $AppKeyConst $i 1)))
+        local byte=$(( 0x$(get_byte "$seed1" "$i" 1) ^ 0x$(get_byte "$AppKeyConst" "$i" 1)))
         key1="$(hex_calc "$byte")$key1"
 
-        byte=$((0x$(get_byte $seed2 $i 1) ^ 0x$(get_byte $AppKeyConst $i 1)))
+        byte=$((0x$(get_byte "$seed2" "$i" 1) ^ 0x$(get_byte "$AppKeyConst" "$i" 1)))
         key2="$(hex_calc "$byte")$key2"
     done
 
     # echo "key1: $key1, key2: $key2"
+    local key
+    key=$(hex_calc "0x$key1 + 0x$key2")
+    key=$(get_byte "$key" 3 4)
 
-    local key=$(hex_calc "0x$key1 + 0x$key2")
-    key=$(get_byte $key 3 4)
-
-    echo $key
+    echo "$key"
 }
 
 function diag_msg_sess_ctrl_def() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
     msg_doip_send "$(diag_msg_head ${UDS_PROTO_SESSION_CTL}${UDS_PROTO_SESSION_CTL_DEF})"
     local rt=$?
     return $rt
 }
 
 function diag_msg_sess_ctrl_exten() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
     msg_doip_send "$(diag_msg_head ${UDS_PROTO_SESSION_CTL}${UDS_PROTO_SESSION_CTL_EXTEN})"
     local rt=$?
     return $rt
 }
 
 function read_data_by_id_hw_sw_info() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
     msg_doip_send "$(diag_msg_head ${UDS_PROTO_READ_DATA}${UDS_PROTO_READ_DATA_HW})"
     local rt=$?
-
-    local hw=$(sed -n -r "s/uds_read_data_22 (*)/\1/p" "$FILE_RECV_DIAG_MSG_RES")
+    local hw
+    hw=$(sed -n -r "s/uds_read_data_22 (*)/\1/p" "$FILE_RECV_DIAG_MSG_RES")
     print_info "hardware info:$hw\n"
 
     if [ $rt -eq 0 ];then
         msg_doip_send "$(diag_msg_head ${UDS_PROTO_READ_DATA}${UDS_PROTO_READ_DATA_SW})"
         rt=$?
-
-        local sw=$(sed -n -r "s/uds_read_data_22 (*)/\1/p" "$FILE_RECV_DIAG_MSG_RES")
+        local sw
+        sw=$(sed -n -r "s/uds_read_data_22 (*)/\1/p" "$FILE_RECV_DIAG_MSG_RES")
         print_info "software info:$sw\n"
 
     fi
@@ -1102,54 +1139,58 @@ function read_data_by_id_hw_sw_info() {
 }
 
 function write_data_by_id_finger_print() {
-    print_info "call ${FUNCNAME}"
-    local finger="$(date '+%02y%0m%0d%H%M%S')"
+    print_info "call ${FUNCNAME[0]}"
+    local finger
+    finger="$(date '+%02y%0m%0d%H%M%S')"
     finger="${finger}$(printf "%.sf" {1..84})"
-    msg_doip_send "$(diag_msg_head ${UDS_PROTO_WRITE_DATA}${UDS_PROTO_WRITE_DATA_FINGER_PRINT}${finger})"
-    local rt=$?
+    msg_doip_send "$(diag_msg_head "${UDS_PROTO_WRITE_DATA}${UDS_PROTO_WRITE_DATA_FINGER_PRINT}${finger}")"
+    local rt
+    rt=$?
     return $rt
 }
 
 function sess_exten_diag_msg_sec_acc() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
 
     msg_doip_send "$(diag_msg_head ${UDS_PROTO_SEC_ACC}${UDS_PROTO_EXTEN_SEC_ACC_SEED})"
     local rt=$?
-
-    local seed=$(sed -n -r "s/uds_repsp_sec_acc_27 ([0-9a-eA-E]{8})*/\1/p" "$FILE_RECV_DIAG_MSG_RES")
+    local seed
+    seed=$(sed -n -r "s/uds_repsp_sec_acc_27 ([0-9a-eA-E]{8})*/\1/p" "$FILE_RECV_DIAG_MSG_RES")
     #local key="01020304"
-    local key=$(uds_calc_key_673 $seed)
+    local key
+    key=$(uds_calc_key_673 "$seed")
     print_info "seed:${seed}, key:${key}\n"
     [[ $rt -ne 0 ]] && return $rt
-    msg_doip_send "$(diag_msg_head ${UDS_PROTO_SEC_ACC}${UDS_PROTO_EXTEN_SEC_ACC_KEY}${key})"
+    msg_doip_send "$(diag_msg_head "${UDS_PROTO_SEC_ACC}${UDS_PROTO_EXTEN_SEC_ACC_KEY}${key}")"
     rt=$?
 
     return $rt
 }
 
 function routine_ctrl_chk_ota_mode_pre_cond() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
     msg_doip_send "$(diag_msg_head ${UDS_PROTO_ROUTINE_CTL}${UDS_PROTO_ROUTINE_CTL_CHK_OTA_MODE_PRE_COND})"
     local rt=$?
     return $rt
 }
 
 function routine_ctrl_prog_pre_cond() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
     msg_doip_send "$(diag_msg_head ${UDS_PROTO_ROUTINE_CTL}${UDS_PROTO_ROUTINE_CTL_PROG_PRE_COND})"
     local rt=$?
     return $rt
 }
 
 function routine_ctrl_chk_prog_integ() {
-    print_info "call ${FUNCNAME}\n"
+    print_info "call ${FUNCNAME[0]}\n"
     local md5_sum="$1"
     local rt=255
-    msg_doip_send "$(diag_msg_head ${UDS_PROTO_ROUTINE_CTL}${UDS_PROTO_ROUTINE_CTL_CHK_PROG_INTEGRITY}${md5_sum})"
+    msg_doip_send "$(diag_msg_head "${UDS_PROTO_ROUTINE_CTL}${UDS_PROTO_ROUTINE_CTL_CHK_PROG_INTEGRITY}${md5_sum}")"
     rt=$?
 
     if [ $rt -eq 0 ];then
-        local res=$(tail -n1 "$FILE_RECV_DIAG_MSG_RES" | awk '{print $2}')
+        local res
+        res=$(tail -n1 "$FILE_RECV_DIAG_MSG_RES" | awk '{print $2}')
         print_info "check program itegrity (uds): $res\n"
 
         if [ x"$res" != x"${UDS_PROTO_ROUTINE_CTL_CHK_PROG_INTEGRITY}00" ];then
@@ -1162,57 +1203,58 @@ function routine_ctrl_chk_prog_integ() {
 }
 
 function routine_ctrl_chk_pkg_sig_verif() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
     msg_doip_send "$(diag_msg_head ${UDS_PROTO_ROUTINE_CTL}${UDS_PROTO_ROUTINE_CTL_CHK_PKG_SIG_VERIFI})"
     local rt=$?
 }
 
 function dtc_setting() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
     msg_doip_send "$(diag_msg_head ${UDS_PROTO_DTC_SETTING}${UDS_PROTO_DTC_SETTING_DISABLE_DTC})"
     local rt=$?
     return $rt
 }
 
 function comm_ctl {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
     msg_doip_send "$(diag_msg_head ${UDS_PROTO_COMM_CTL}${UDS_PROTO_COMM_CTL_ETH_SILENT})"
     local rt=$?
     return $rt
 }
 
 function diag_msg_sess_ctrl_prog() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
     msg_doip_send "$(diag_msg_head ${UDS_PROTO_SESSION_CTL}${UDS_PROTO_SESSION_CTL_PROG})"
     local rt=$?
     return $rt
 }
 
 function sess_prog_diag_msg_sec_acc() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
 
     msg_doip_send "$(diag_msg_head ${UDS_PROTO_SEC_ACC}${UDS_PROTO_PROG_SEC_ACC_SEED})"
     local rt=$?
-
-    local seed=$(sed -n -r "s/uds_repsp_sec_acc_27 ([0-9a-eA-E]{8})*/\1/p" "$FILE_RECV_DIAG_MSG_RES")
+    local seed
+    local key
+    seed=$(sed -n -r "s/uds_repsp_sec_acc_27 ([0-9a-eA-E]{8})*/\1/p" "$FILE_RECV_DIAG_MSG_RES")
     #local key="01020304"
-    local key=$(uds_calc_key_673 $seed)
+    key=$(uds_calc_key_673 "$seed")
     print_info "seed:${seed}, key:${key}\n"
     [[ $rt -ne 0 ]] && return $rt
 
-    msg_doip_send "$(diag_msg_head ${UDS_PROTO_SEC_ACC}${UDS_PROTO_PROG_SEC_ACC_KEY}${key})"
+    msg_doip_send "$(diag_msg_head "${UDS_PROTO_SEC_ACC}${UDS_PROTO_PROG_SEC_ACC_KEY}${key}")"
     rt=$?
 
     return $rt
 }
 
 function sess_prog_read_data_by_id() {
-    print_info "call ${FUNCNAME}"
-    msg_doip_send "$(diag_msg_head ${UDS_PROTO_READ_DATA}${UDS_PROTO_READ_DATA_F170})"
+    print_info "call ${FUNCNAME[0]}"
+    msg_doip_send "$(diag_msg_head "${UDS_PROTO_READ_DATA}${UDS_PROTO_READ_DATA_F170}")"
     local rt=$?
 
     if [ $rt -eq 0 ]; then
-        msg_doip_send "$(diag_msg_head ${UDS_PROTO_READ_DATA}${UDS_PROTO_READ_DATA_F171})"
+        msg_doip_send "$(diag_msg_head "${UDS_PROTO_READ_DATA}${UDS_PROTO_READ_DATA_F171}")"
         rt=$?
     fi
 
@@ -1220,13 +1262,13 @@ function sess_prog_read_data_by_id() {
 }
 
 function read_data_by_id_prog_status() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
 
     local status=''
     local rt=0
 
-    echo -ne "" > $FILE_OTA_PROG_STATUS
-    msg_doip_send "$(diag_msg_head ${UDS_PROTO_READ_DATA}${UDS_PROTO_READ_DATA_PROG_STATUS})"
+    echo -ne "" > "$FILE_OTA_PROG_STATUS"
+    msg_doip_send "$(diag_msg_head "${UDS_PROTO_READ_DATA}${UDS_PROTO_READ_DATA_PROG_STATUS}")"
     rt=$?
 
     if [ $rt -eq 0 ];then
@@ -1238,7 +1280,7 @@ function read_data_by_id_prog_status() {
         print_error "error: $rt !\n"
     else
         print_info "OTA_PROG_STATUS:$status, ${OTA_PROG_STATUS[$status]}\n"
-        echo -ne "OTA_PROG_STATUS:$status" > $FILE_OTA_PROG_STATUS
+        echo -ne "OTA_PROG_STATUS:$status" > "$FILE_OTA_PROG_STATUS"
     fi
 
     return $rt
@@ -1249,7 +1291,7 @@ function read_data_by_id_prog_status() {
 # 255: error
 
 function chk_ota_status() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
     local chk_stat=($(echo "$@" | xargs)) # convert to array
     read_data_by_id_prog_status
     local rt=$?
@@ -1257,8 +1299,8 @@ function chk_ota_status() {
     local cnt=${#chk_stat[@]}
     local err=255
     [[ $rt -ne 0 ]] && print_info "chk_ota_status ret: $err\n" && return $err
-
-    local ota_status=$(sed -n -r "s/OTA_PROG_STATUS:([0-9a-eA-E]{2})*/\1/p" "$FILE_OTA_PROG_STATUS")
+    local ota_status
+    ota_status=$(sed -n -r "s/OTA_PROG_STATUS:([0-9a-eA-E]{2})*/\1/p" "$FILE_OTA_PROG_STATUS")
     rt=$?
     [[ $rt -ne 0 || -z "$ota_status" ]] && print_info "chk_ota_status ret: $err\n" && return $err
 
@@ -1274,8 +1316,8 @@ function chk_ota_status() {
     #OTA_PROG_STAT_ACTIVATE_FAIL=09
     #OTA_PROG_STAT_END=FF
 
-    for ((i=0; i < $cnt; ++i)) do
-        [[ x"${chk_stat[$i]}" == x"$ota_status" ]] && print_info "chk_ota_status:$ota_status, ret:$(($i+1))\n" && return $(($i+1))
+    for ((i=0; i < cnt; ++i)) do
+        [[ x"${chk_stat[$i]}" == x"$ota_status" ]] && print_info "chk_ota_status:$ota_status, ret:$((i+1))\n" && return $((i+1))
     done
 
     [[ x"$ota_status" == x"$OTA_PROG_STAT_INSTALL_FAIL"  \
@@ -1286,13 +1328,13 @@ function chk_ota_status() {
 }
 
 function read_data_by_id_inst_progress() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
     local progress=0
     local progress_new=0
-    local seconds=$(date +%s)
+    local seconds
     local sec=0
     local max_cnt=240
-
+    seconds=$(date +%s)
     chk_ota_status "$OTA_PROG_STAT_INSTALL"
     local rt=$?
     [[ $rt -eq 0 ]] && return 0   # step over
@@ -1301,10 +1343,11 @@ function read_data_by_id_inst_progress() {
     while [[ 0x$progress -lt 100 ]];do
         msg_doip_send "$(diag_msg_head ${UDS_PROTO_READ_DATA}${UDS_PROTO_READ_DATA_INST_PROGRESS})"
         local rt=$?
-        sec=$(($(date +%s) - $seconds))
+        sec=$(($(date +%s) - seconds))
 
         if [ $rt -ne 0 ];then
-            local sck_err=$(tail -n1 $FILE_SOCK_ERR | tr -d "\n")
+            local sck_err
+            sck_err=$(tail -n1 "$FILE_SOCK_ERR" | tr -d "\n")
 
             if [ -n "$sck_err" ];then
                 if [[ $sck_err =~ "Connection timed out" ]] || [[ $sck_err =~ "No route to host" ]];then
@@ -1317,11 +1360,16 @@ function read_data_by_id_inst_progress() {
                     print_warning "$sck_err, try($sec/$max_cnt) ... \n"
                 fi
             else
-                local recved=$(tail -n1 $FILE_RECV_DIAG_MSG_RES)
+                local recved
+                recved=$(tail -n1 "$FILE_RECV_DIAG_MSG_RES")
 
                 if [[ $recved =~ "diag_msg_resp_8003" ]];then
                     print_error "recved diag_msg_resp_8003\n"
                     #routing_acti_req
+                    break
+                elif [[ $recved =~ "diag_msg_resp_8001 7f2210" ]];then
+                    chk_ota_status "$OTA_PROG_STAT_INSTALL"
+                    rt=255
                     break
                 fi
             fi
@@ -1337,7 +1385,7 @@ function read_data_by_id_inst_progress() {
 
         if [[ 0x$progress_new -eq 0x$progress ]];then
             if [ $sec -ge $max_cnt ];then
-                print_error "installing progress($[ 0x$progress ]%%) error timeout(>=$max_cnt) !\n"
+                print_error "installing progress($(( 0x$progress ))%) error timeout(>=$max_cnt) !\n"
                 rt=255
                 break
             fi
@@ -1346,11 +1394,11 @@ function read_data_by_id_inst_progress() {
             seconds=$(date +%s)
         fi
 
-        print_info "installing(${sec}/${max_cnt}) progress($[ 0x$progress ]%%)"
+        print_info "installing(${sec}/${max_cnt}) progress($(( 0x$progress ))%)"
         sleep 1
     done
 
-    print_info "installing progress($[ 0x$progress ]%%)\n"
+    print_info "installing progress($(( 0x$progress ))%)\n"
 
     if [ $rt -ne 0 ];then
         print_error "program install error !\n"
@@ -1361,113 +1409,125 @@ function read_data_by_id_inst_progress() {
     while [[ $rt -eq 0 ]];do
         chk_ota_status "$OTA_PROG_STAT_INSTALL $OTA_PROG_STAT_INSTALL_SUCCESS $OTA_PROG_STAT_INSTALL_FAIL"
         local ret=$?
-        [[ $ret -eq 1 ]] && sleep 1 || break
+        if [ $ret -eq 1 ];then
+            sleep 1
+        else 
+            break
+        fi
     done
 
     return $rt
 }
 
 function download_file() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
     print_warning "not impliment !\n"
 }
 
 function transfer_file() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
     local local_file="$1"
     local remote_file="$2"
     local file_type="$3"
     local rt=255
-
-    local file_size=$(
+    local file_size
+    file_size=$(
         wc -c "$local_file" | awk '{print $1}'
-        exit ${PIPESTATUS[0]}
+        exit "${PIPESTATUS[0]}"
     )
 
     if [[ $file_size -le 0 ]]; then
-        print_error "file size ($(($file_size))) error, please select correct file !\n"
+        print_error "file size ($((file_size))) error, please select correct file !\n"
         return 255
     fi
 
     print_info "local: $local_file, remote: $remote_file\n"
 
     if [ -n "$file_type" ];then
-        local md5_sum=$(md5sum $local_file | awk '{print $1}')
+        local md5_sum
+        md5_sum=$(md5sum "$local_file" | awk '{print $1}')
         print_info "file: $local_file, md5: $md5_sum, type: $file_type\n"
-        msg_doip_send "$(diag_msg_head ${UDS_PROTO_ROUTINE_CTL}${UDS_PROTO_ROUTINE_CTL_CHK_PKG_MD5}${DOIP_PROTOCOL_TA_ECU_2_BYTES}${file_type}0001${md5_sum})"
+        msg_doip_send "$(diag_msg_head "${UDS_PROTO_ROUTINE_CTL}${UDS_PROTO_ROUTINE_CTL_CHK_PKG_MD5}${DOIP_PROTOCOL_TA_ECU_2_BYTES}${file_type}0001${md5_sum}")"
         rt=$?
         [[ $rt -ne 0 ]] && return $rt
-        local file_exist=$(tail -n1 "$FILE_RECV_DIAG_MSG_RES" | awk '{print $2}')
+        local file_exist
+        file_exist=$(tail -n1 "$FILE_RECV_DIAG_MSG_RES" | awk '{print $2}')
         print_info "file_exist(uds): $file_exist\n"
         [[ x"$file_exist" == x"${UDS_PROTO_ROUTINE_CTL_CHK_PKG_MD5}00" ]] && print_info "file already exist, ignore upload !" && return 0 # already exist
     fi
-
-    local size_file_name=$(hex_calc "$((${#remote_file} + 1))")
+    local size_file_name
+    size_file_name=$(hex_calc "$((${#remote_file} + 1))")
 
     # 2 bytes
     while [[ ${#size_file_name} -lt 4 ]];do
         size_file_name="00${size_file_name}"
     done
-    size_file_name=$(get_byte $size_file_name 1 2)
+    size_file_name=$(get_byte "$size_file_name" 1 2)
 
-    remote_file="$(hex_to_str $remote_file)00"              # convert to hex string with null zero
+    remote_file="$(hex_to_str "$remote_file")00"              # convert to hex string with null zero
     local enc_method=00                                     # compressionMethod, encryptingMethod dataFormatIdentifier
     local size_len=04                                       # fileSizeParameterLength
-    local size_uncomp=$(hex_calc $file_size)                # fileSizeUncompressed
+    local size_uncomp
+    size_uncomp=$(hex_calc "$file_size")                # fileSizeUncompressed
 
     # 4 bytes
     while [[ ${#size_uncomp} -lt 8 ]];do
         size_uncomp="00${size_uncomp}"
     done
 
-    size_uncomp=$(get_byte $size_uncomp 3 4)
+    size_uncomp=$(get_byte "$size_uncomp" 3 4)
 
     local size_compr=$size_uncomp                           # fileSizeCompressed
 
-    msg_doip_send "$(diag_msg_head ${UDS_PROTO_FILE_TRANSFER}${UDS_PROTO_FILE_TRANSFER_MODE}${size_file_name}${remote_file}${enc_method}${size_len}${size_uncomp}${size_compr})"
+    msg_doip_send "$(diag_msg_head "${UDS_PROTO_FILE_TRANSFER}${UDS_PROTO_FILE_TRANSFER_MODE}${size_file_name}${remote_file}${enc_method}${size_len}${size_uncomp}${size_compr}")"
     rt=$?
     [[ $rt -ne 0 ]] && return $rt
-
-    local block_bytes=$((0x$(tail -n1 "$FILE_RECV_DIAG_MSG_RES" | awk '{print $2}')))
+    local block_bytes
+    block_bytes=$((0x$(tail -n1 "$FILE_RECV_DIAG_MSG_RES" | awk '{print $2}')))
     local block_idx=0
     local read_size=0
     local percent=0
 
-    [[ $block_bytes -le 0 ]] && block_bytes=40960 || block_bytes=$(($block_bytes - 2))
+    if [ $block_bytes -le 0 ];then
+        block_bytes=40960
+    else
+        block_bytes=$((block_bytes - 2))
+    fi
 
     print_info "transfer data, block size:$block_bytes\n"
 
     while [[ $read_size -lt $file_size ]]; do
-        local data=$(dd count=$block_bytes skip=$read_size iflag=count_bytes,skip_bytes if="$local_file" 2>/dev/null | hex_to_str)
+        local data
+        data=$(dd count="$block_bytes" skip="$read_size" iflag=count_bytes,skip_bytes if="$local_file" 2>/dev/null | hex_to_str)
         rt=$?
 
-        if [ -n "$data" -a $rt -eq 0 ]; then
+        if [ -n "$data" ] && [ $rt -eq 0 ]; then
 
-            block_idx=$(($block_idx + 1))
+            block_idx=$((block_idx + 1))
 
             if [ $block_idx -gt 255 ];then
                 block_idx=0
             fi
 
-            msg_doip_send "$(diag_msg_head ${UDS_PROTO_TRANSFER_DATA}$(hex_calc $block_idx | get_byte)${data})"
+            msg_doip_send "$(diag_msg_head "${UDS_PROTO_TRANSFER_DATA}$(hex_calc "$block_idx" | get_byte)${data}")"
             rt=$?
             if [ $rt -ne 0 ];then
-                print_warning "uploading read file break, rt:$rt, progress($percent%%, $read_size/$file_size)\n"
+                print_warning "uploading read file break, rt:$rt, progress($percent%, $read_size/$file_size)\n"
                 break
             fi
             #sleep 0.5
-            read_size=$(($read_size + $((${#data} / 2))))
+            read_size=$((read_size + $((${#data} / 2))))
             percent=$(echo "scale=1;100*$read_size/$file_size" | bc)
-            percent=$(printf "%.1f" $percent)
-            print_info "uploading progress(i:$block_idx, $percent%%, $read_size/$file_size) ..."
+            percent=$(printf "%.1f" "$percent")
+            print_info "uploading progress(i:$block_idx, $percent%, $read_size/$file_size) ..."
         else
-            print_warning "uploading read file break, rt:$rt, progress($percent%%, $read_size/$file_size)\n"
+            print_warning "uploading read file break, rt:$rt, progress($percent%, $read_size/$file_size)\n"
             break
         fi
     done
 
     if [ $rt -eq 0 ]; then
-        print_success "uploading progress(i:$block_idx, $percent%%, $read_size/$file_size)\n"
+        print_success "uploading progress(i:$block_idx, $percent%, $read_size/$file_size)\n"
         msg_doip_send "$(diag_msg_head ${UDS_PROTO_TRANSFER_EXIT})"
         rt=$?
         
@@ -1479,28 +1539,28 @@ function transfer_file() {
             rt=$rt
         fi
     else
-        print_error "uploading progress:(i:$block_idx, ${percent}%%, $read_size/$file_size), rt: $rt\n"
+        print_error "uploading progress:(i:$block_idx, ${percent}%, $read_size/$file_size), rt: $rt\n"
     fi
 
     return $rt
 }
 
 function transfer_file_sig() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
     local file="${TMP_PATH}/swdl.tar.sig"
     cp "${UPGRADE_TAR_FILE}.sig" "$file"
     transfer_file "$file" "/swdl/doip/swdl.tar.sig" # "01"
     local rt=$?
-    rm $file
+    rm "$file"
     ### routine_ctrl_chk_pkg_sig_verif
 
     return $rt
 }
 
 function transfer_file_pkg() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
 
-    chk_ota_status "$OTA_PROG_STAT_INIT $OTA_PROG_STAT_ACTIVATE_SUCCESS $OTA_PROG_STAT_END"
+    chk_ota_status "$OTA_PROG_STAT_INIT $OTA_PROG_STAT_ACTIVATE_SUCCESS $OTA_PROG_STAT_END $OTA_PROG_STAT_INSTALL_FAIL"
     local rt=$?
     [[ $rt -eq 0 ]] && return 0   # step over
     [[ $rt -eq 255 ]] && return $rt # error
@@ -1510,7 +1570,7 @@ function transfer_file_pkg() {
     transfer_file "$file" "/swdl/doip/swdl.tar.zip" # "02"
     #scp swdl_tar/swdl*.zip root@192.168.31.123:/swdl/doip/swdl.tar.zip
     rt=$?
-    rm $file
+    rm "$file"
 
     #if [ $rt -eq 0 ];then
     #    print_warning "installing will auto start later ...\n"
@@ -1521,9 +1581,9 @@ function transfer_file_pkg() {
 }
 
 function routine_ctrl_start_install() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
 
-    chk_ota_status "$OTA_PROG_STAT_INIT $OTA_PROG_STAT_ACTIVATE_SUCCESS $OTA_PROG_STAT_END"
+    chk_ota_status "$OTA_PROG_STAT_INIT $OTA_PROG_STAT_ACTIVATE_SUCCESS $OTA_PROG_STAT_END $OTA_PROG_STAT_INSTALL_FAIL"
     local rt=$?
     [[ $rt -eq 0 ]] && return 0   # step over
     [[ $rt -eq 255 ]] && return $rt # error
@@ -1532,7 +1592,8 @@ function routine_ctrl_start_install() {
     rt=$?
     [[ $rt -ne 0 ]] && return $rt
 
-    local result=$(sed -n -r "s/uds_routine_ctl_31 ${UDS_PROTO_ROUTINE_CTL_START_INSTALL}([0-9a-eA-E]{2})*/\1/p" "$FILE_RECV_DIAG_MSG_RES")
+    local result
+    result=$(sed -n -r "s/uds_routine_ctl_31 ${UDS_PROTO_ROUTINE_CTL_START_INSTALL}([0-9a-eA-E]{2})*/\1/p" "$FILE_RECV_DIAG_MSG_RES")
 
     #print_warning "$(cat $FILE_RECV_DIAG_MSG_RES)\n"
 
@@ -1544,14 +1605,18 @@ function routine_ctrl_start_install() {
     while [[ $rt -eq 0 ]];do
         chk_ota_status "$OTA_PROG_STAT_INIT $OTA_PROG_STAT_VERIFY $OTA_PROG_STAT_VERIFY_SUCCESS $OTA_PROG_STAT_INSTALL $OTA_PROG_STAT_INSTALL_SUCCESS $OTA_PROG_STAT_INSTALL_FAIL"
         local ret=$?
-        [[ $ret -eq 1 || $ret -eq 2 || $ret -eq 3 ]] && sleep 1 || break
+        if [[ $ret -eq 1 || $ret -eq 2 || $ret -eq 3 ]];then
+            sleep 1
+        else
+            break
+        fi
     done
 
     return $rt
 }
 
 function routine_ctrl_start_activate() {
-    print_info "call ${FUNCNAME}"
+    print_info "call ${FUNCNAME[0]}"
 
     chk_ota_status "$OTA_PROG_STAT_INSTALL_SUCCESS"
     local rt=$?
@@ -1561,8 +1626,8 @@ function routine_ctrl_start_activate() {
     msg_doip_send "$(diag_msg_head ${UDS_PROTO_ROUTINE_CTL}${UDS_PROTO_ROUTINE_CTL_START_ACTIVATE})"
     rt=$?
     [[ $rt -ne 0 ]] && return $rt
-
-    local result=$(sed -n -r "s/uds_routine_ctl_31 ${UDS_PROTO_ROUTINE_CTL_START_ACTIVATE}([0-9a-eA-E]{2})*/\1/p" "$FILE_RECV_DIAG_MSG_RES")
+    local result
+    result=$(sed -n -r "s/uds_routine_ctl_31 ${UDS_PROTO_ROUTINE_CTL_START_ACTIVATE}([0-9a-eA-E]{2})*/\1/p" "$FILE_RECV_DIAG_MSG_RES")
 
     #print_warning "$(cat $FILE_RECV_DIAG_MSG_RES)\n"
 
@@ -1578,7 +1643,7 @@ function routine_ctrl_start_activate() {
     while [[ $rt -eq 0 && $i -le $max ]];do
         local ret=0
         print_info "waiting for device reboot ($i/$max) ret:$ret ...\n"
-        i=$(($i+1))
+        i=$((i+1))
         ping_test $LINENO 1
         ret=$?
         [[ $ping_failed -eq 0 ]] && ping_failed=$ret
@@ -1619,10 +1684,10 @@ function session_ctrl() {
     local k=0
 
     for k in ${!DOIP_MSG_REQ_SEQUENCE_SESSION_CTRL[*]}; do
-        print_info "START_SESSION_CTRL step[$(($k + 1))/${#DOIP_MSG_REQ_SEQUENCE_SESSION_CTRL[@]}] ${DOIP_MSG_REQ_SEQUENCE_SESSION_CTRL[$k]}\n"
+        print_info "START_SESSION_CTRL step[$((k + 1))/${#DOIP_MSG_REQ_SEQUENCE_SESSION_CTRL[@]}] ${DOIP_MSG_REQ_SEQUENCE_SESSION_CTRL[$k]}\n"
         ${DOIP_MSG_REQ_SEQUENCE_SESSION_CTRL[$k]}
         rt=$?
-        print_info "START_SESSION_CTRL step[$(($k + 1))/${#DOIP_MSG_REQ_SEQUENCE_SESSION_CTRL[@]}] ${DOIP_MSG_REQ_SEQUENCE_SESSION_CTRL[$k]}\n"
+        print_info "END_SESSION_CTRL step[$((k + 1))/${#DOIP_MSG_REQ_SEQUENCE_SESSION_CTRL[@]}] ${DOIP_MSG_REQ_SEQUENCE_SESSION_CTRL[$k]}\n"
         [[ $rt -ne 0 ]] && break
     done
 
@@ -1722,17 +1787,18 @@ save_cfg()
 {
 	[[ x"$TAR_PATH" != x"$CFG_TAR_PATH" ]] && sed -i 's#^CFG_TAR_PATH=\".*\"$#CFG_TAR_PATH=\"'$TAR_PATH'\"#' $CUR_FILE
 	[[ x"$IP" != x"$CFG_IP" ]] && sed -i 's#^CFG_IP=\".*\"$#CFG_IP=\"'$IP'\"#' $CUR_FILE
-	[[ $TOTAL_CNT != $CFG_TOTAL_CNT ]] && sed -i 's#^CFG_TOTAL_CNT=[0-9]*$#CFG_TOTAL_CNT='$TOTAL_CNT'#' $CUR_FILE
+	[[ x"$TOTAL_CNT" != x"$CFG_TOTAL_CNT" ]] && sed -i 's#^CFG_TOTAL_CNT=[0-9]*$#CFG_TOTAL_CNT='$TOTAL_CNT'#' $CUR_FILE
 }
 
 function parse_args() {
 
     local params="$*"
 
-    TAR_PATH=`echo $params | sed -n -r -e "s#.*-d\s*(\S+).*#\1#p"`
-    IP=`echo $params | sed -n -r -e "s#.*-h\s*([0-9]{2,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}).*#\1#p"`
-    TOTAL_CNT=`echo $params | sed -n -r -e "s#.*-c\s*([0-9]+).*#\1#p"`
-    local HELP=`echo $params | sed -n -r -e "s#.*--(help).*#\1#p"`
+    TAR_PATH=$(echo "$params" | sed -n -r -e "s#.*-d\s*(\S+).*#\1#p")
+    IP=$(echo "$params" | sed -n -r -e "s#.*-h\s*([0-9]{2,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}).*#\1#p")
+    TOTAL_CNT=$(echo "$params" | sed -n -r -e "s#.*-c\s*([0-9]+).*#\1#p")
+    local HELP
+    HELP=$(echo "$params" | sed -n -r -e "s#.*--(help).*#\1#p")
 
     while [[ "${TAR_PATH:-1}" == "/" ]]
     do
@@ -1775,10 +1841,10 @@ function start_program_once() {
     [[ $rt -ne 0 ]] && return $rt
 
     for k in ${!DOIP_MSG_REQ_SEQUENCE[*]}; do
-        print_info "BEGIN step[$(($k + 1))/${#DOIP_MSG_REQ_SEQUENCE[@]}] ${DOIP_MSG_REQ_SEQUENCE[$k]}\n"
+        print_info "BEGIN step[$((k + 1))/${#DOIP_MSG_REQ_SEQUENCE[@]}] ${DOIP_MSG_REQ_SEQUENCE[$k]}\n"
         ${DOIP_MSG_REQ_SEQUENCE[$k]}
         rt=$?
-        print_info "END step[$(($k + 1))/${#DOIP_MSG_REQ_SEQUENCE[@]}] ${DOIP_MSG_REQ_SEQUENCE[$k]}\n"
+        print_info "END step[$((k + 1))/${#DOIP_MSG_REQ_SEQUENCE[@]}] ${DOIP_MSG_REQ_SEQUENCE[$k]}\n"
         [[ $rt -ne 0 ]] && break
     done
 
@@ -1790,31 +1856,32 @@ function start_program_once() {
 function find_tar_files() {
     local zip_format="zip"
     local i=1
-    local files="`find $TAR_PATH -maxdepth 1 -name "*.$zip_format"`"
-    [[ ! -z $files ]] && files="`echo "$files" | xargs ls -ltr | awk '{print $9}'`"
+    local files
+    files="$(find $TAR_PATH -maxdepth 1 -name "*.$zip_format")"
+    [[ ! -z $files ]] && files="$(echo "$files" | xargs ls -ltr | awk '{print $9}')"
 
-    while read f
+    while read -r f
     do
         if [ -s "$f" ];then
             TAR_FILES[$i]="$f"
             print_info "tar_file ($i): ${TAR_FILES[$i]}\n"
-            i=$(($i+1))
+            i=$((i+1))
         fi
-    done <<< $(echo -n "$files")
+    done <<< "$(echo -n "$files")"
 
     local size=${#TAR_FILES[@]}
 
-    if [ $size -eq 0 ];then
-        print_error "no such file \"$tar_path/*.$zip_format\"\n"
+    if [ "$size" -eq 0 ];then
+        print_error "no such file \"$TAR_PATH/*.$zip_format\"\n"
         return 255
     fi
 
     local index=1
     local idx_read=""
 
-    if [ $size -gt 1 ];then
+    if [ "$size" -gt 1 ];then
         while [[ ! "$idx_read" =~ ^[0-9]{1,}$ ]] || [[ $idx_read -lt 1 ]] || [[ $idx_read -gt $size ]];do
-            read -t 10 -p "Please select tar file (1 ~ $size, default: 1) : " idx_read
+            read -r -t 10 -p "Please select tar file (1 ~ $size, default: 1) : " idx_read
             [[ $? -eq 142 ]] && idx_read=1 && break
         done
         index=$idx_read
@@ -1834,28 +1901,29 @@ function kill_pid_children() {
 	#	kill -9 $pid >&2
 	#fi
     [[ -z "$pid" ]] && return
-    local pids=$(pstree -p $pid | sed -r -e 's/(.*)pstree\([0-9]+\)/\1/g' | grep -o [0-9]* | xargs)
-	[[ ! -z "$pids" ]] && kill -9 $pids >&2
+    local pids
+    pids=$(pstree -p "$pid" | sed -r -e 's/(.*)pstree\([0-9]+\)/\1/g' | grep -o "[0-9]*" | xargs)
+	[[ ! -z "$pids" ]] && kill -9 "$pids" >&2
 }
 
 function init_env() {
     mkdir -p "$LOG_PATH"
     local pid=''
 
-    if [ -s $FILE_TOP_PID -a -d /proc/$FILE_TOP_PID ];then
-        pid=$(cat $FILE_TOP_PID)
+    if [ -s "$FILE_TOP_PID" ] && [ -d "/proc/$FILE_TOP_PID" ];then
+        pid=$(cat "$FILE_TOP_PID")
         print_warning "[Line:$LINENO] prev running script (pid:$pid) will be killed !\n"
-        kill_pid_children $pid
+        kill_pid_children "$pid"
     fi
 
-    if [ -s $FILE_SOCK_RECV_PID ];then
-        pid=$(cat $FILE_SOCK_RECV_PID)
-        kill_pid_children $pid 2>/dev/null
+    if [ -s "$FILE_SOCK_RECV_PID" ];then
+        pid=$(cat "$FILE_SOCK_RECV_PID")
+        kill_pid_children "$pid" 2>/dev/null
     fi
 
-    if [ -s $FILE_SOCK_RECV_SIZE_PID ];then
-        pid=$(cat $FILE_SOCK_RECV_SIZE_PID)
-        kill_pid_children $pid 2>/dev/null
+    if [ -s "$FILE_SOCK_RECV_SIZE_PID" ];then
+        pid=$(cat "$FILE_SOCK_RECV_SIZE_PID")
+        kill_pid_children "$pid" 2>/dev/null
     fi
 
     echo -ne "" > "$FILE_SOCK_ERR"
@@ -1876,24 +1944,24 @@ function exist_sock_recv_size_proc() {
     local fd=''
     local ppid=''
 
-    if [ -s $pidfile ];then
+    if [ -s "$pidfile" ];then
         pid=$(cat "$pidfile")
 
         if [ -n "$pid" ];then
-           fd=$( cat /proc/$pid/status 2>/dev/null | grep "Name:" | sed -n -r 's/Name: *(.*)/\1/p' | xargs )
-           ppid=$( cat /proc/$pid/status 2>/dev/null | grep "PPid:" | sed -n -r 's/PPid: *(.*)/\1/p' | xargs )
+           fd=$( grep "Name:" 2>/dev/null < "/proc/$pid/status" | sed -n -r 's/Name: *(.*)/\1/p' | xargs )
+           ppid=$( grep "PPid:" 2>/dev/null < "/proc/$pid/status" | sed -n -r 's/PPid: *(.*)/\1/p' | xargs )
         fi
 
         if [[ -n "$pid" && $killed -eq 1 ]];then
            print_warning "exist_sock_recv_size_proc killed, pid:$pid, fd:$fd\n"
             
-            if [[ x"$fd" != x"" && $CUR_FILE =~ "$fd" ]];then
-                echo -ne "" > $pidfile && kill_pid_children $pid
+            if [[ x"$fd" != x"" && $CUR_FILE =~ $fd ]];then
+                echo -ne "" > "$pidfile" && kill_pid_children "$pid"
             elif [[ $ppid -eq $TOP_SHELL_PID ]];then
-                echo -ne "" > $pidfile && kill_pid_children $pid
+                echo -ne "" > "$pidfile" && kill_pid_children "$pid"
             fi
 
-           echo -ne "" > $FILE_SOCK_RECV_SIZE
+           echo -ne "" > "$FILE_SOCK_RECV_SIZE"
            fd=''
         fi
     fi
@@ -1908,7 +1976,11 @@ function exist_sock_recv_size_proc() {
 
     #print_warning "exist_sock_recv_size_proc pid:$pid, fd:$fd, kill:$killed\n"
 
-    [[ -n "$fd" ]] && return 0 || return 1
+    if [ -n "$fd" ];then
+        return 0
+    else
+        return 1
+    fi
 } 
 
 function exist_sock_recv_proc() {
@@ -1918,30 +1990,30 @@ function exist_sock_recv_proc() {
     local fd=''
     local ppid=''
 
-    if [ -s $pidfile ];then
+    if [ -s "$pidfile" ];then
         pid=$(cat "$pidfile")
 
         if [ -n "$pid" ];then
-            fd=$( cat /proc/$pid/status 2>/dev/null | grep "Name:" | sed -n -r 's/Name: *(.*)/\1/p' | xargs )
-            ppid=$( cat /proc/$pid/status 2>/dev/null | grep "PPid:" | sed -n -r 's/PPid: *(.*)/\1/p' | xargs )
+            fd=$( grep "Name:" 2>/dev/null < "/proc/$pid/status" | sed -n -r 's/Name: *(.*)/\1/p' | xargs )
+            ppid=$( grep "PPid:" 2>/dev/null < "/proc/$pid/status" | sed -n -r 's/PPid: *(.*)/\1/p' | xargs )
         fi
 
         if [[ -n "$pid" && $killed -eq 1 ]];then
             print_warning "exist_sock_recv_proc killed, pid:$pid, fd:$fd\n"
-            if [[ x"$fd" != x"" && $CUR_FILE =~ "$fd" ]];then
-                echo -ne "" > $pidfile && kill_pid_children $pid
+            if [[ x"$fd" != x"" && $CUR_FILE =~ $fd ]];then
+                echo -ne "" > "$pidfile" && kill_pid_children "$pid"
             elif [[ $ppid -eq $TOP_SHELL_PID ]];then
-                echo -ne "" > $pidfile && kill_pid_children $pid
+                echo -ne "" > "$pidfile" && kill_pid_children "$pid"
             fi
 
             #echo -ne "" > $pidfile && kill_pid_children $pid
-            echo -ne "" > $FILE_SOCK_RECV_RES
+            echo -ne "" > "$FILE_SOCK_RECV_RES"
             fd=''
         fi
     fi
 
     if [[ $killed -eq 0 && -z "$pid" ]];then
-        get_sock_recv & pid=$!; echo -ne $pid > "$pidfile"
+        get_sock_recv & pid=$!; echo -ne "$pid" > "$pidfile"
         sync -f "$pidfile"
         print_warning "exist_sock_recv_proc create, pid:$pid, fd:$fd\n"
         fd=$pid
@@ -1950,15 +2022,23 @@ function exist_sock_recv_proc() {
 
     #print_warning "exist_sock_recv_proc pid:$pid, fd:$fd, kill:$killed\n"
 
-    [[ -n "$fd" ]] && return 0 || return 1
+    if [ -n "$fd" ];then
+        return 0
+    else 
+        return 1
+    fi
 }
 
 function shell_exit() {
     exist_sock_recv_proc 1
     exist_sock_recv_size_proc 1
     print_info "shell_exit.\n\n"
+    rm -rf "${LOG_PATH}/tmp_logs/"
+    mkdir -p "${LOG_PATH}/tmp_logs/"
+    cp -r "${TMP_PATH}"/file_* "${LOG_PATH}/tmp_logs/"
     wait
-    sudo umount $TMP_PATH
+    sleep 1
+    sudo umount "$TMP_PATH"
 }
 
 function main() {
@@ -1973,21 +2053,22 @@ function main() {
     local rt=0
     local i=1
 
-    if [ ! -d $LOG_PATH ];then
-        print_error "[Line:$LINENO] dir \"$LOG_PATH\" not exist !"
+    if [ ! -d "$LOG_PATH" ];then
+        print_error "[Line:$LINENO] dir \"$LOG_PATH\" not exist !\n"
         print_info ""
         return 255
     fi
 
     find_tar_files
-    [[ $? -ne 0 ]] && return 255
+    rt=$?
+    [[ $rt -ne 0 ]] && return 255
 
-    for ((i=1; i <= $max_cnt; i++));do
+    for ((i=1; i <= max_cnt; i++));do
         print_info ""
         print_info "++++++ Loop begin[$i/$max_cnt] success: $success_cnt, failed: $failed_cnt ++++++ \n"
         start_program_once $i $max_cnt
         rt=$?
-        [[ $rt -eq 0 ]] && success_cnt=$(($success_cnt + 1)) || failed_cnt=$(($failed_cnt + 1))
+        [[ $rt -eq 0 ]] && success_cnt=$((success_cnt + 1)) || failed_cnt=$((failed_cnt + 1))
         print_info "------ Loop end[$i/$max_cnt] success: $success_cnt, failed: $failed_cnt ------ \n"
         print_info ""
     done
