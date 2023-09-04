@@ -1,0 +1,11 @@
+# automounting sd card flash drives
+KERNEL=="sd[c-z][1-9]", ACTION=="add", SUBSYSTEM=="block", RUN+="/bin/mkdir -p /mnt/sdcard%n"
+KERNEL=="sd[c-z][1-9]", ACTION=="add", SUBSYSTEM=="block", RUN+="/bin/mount /dev/%k /mnt/sdcard%n"
+
+# umount usb sd card  drivers
+KERNEL=="sd[c-z][1-9]", ACTION=="remove", SUBSYSTEM=="block", RUN+="/bin/umount /dev/%k /mnt/sdcard%n"
+KERNEL=="sd[c-z][1-9]", ACTION=="remove", SUBSYSTEM=="block", RUN+="/bin/rm -fr /mnt/sdcard%n"
+KERNEL=="sd[c-z][1-9]", ACTION=="remove", SUBSYSTEM=="block", GOTO="sdcard_end" LABEL="sdcard_end"
+
+LABEL="sdcard_end"
+
