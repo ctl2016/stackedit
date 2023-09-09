@@ -52,7 +52,6 @@ RUN apt-get -qq -y remove curl \
 
 COPY    start-notebook.sh /usr/bin
 USER    notebooker
-COPY    test.cpp /home/notebooker
 WORKDIR /home/notebooker
 CMD     mkdir -p /work \
 	&& cd /work \
