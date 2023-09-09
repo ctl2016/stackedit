@@ -17,7 +17,7 @@ FROM ubuntu:18.04
 SHELL ["/bin/bash", "-c"]
 COPY sources.list /etc/apt/
 COPY apt.conf /etc/apt/
-COPY .mambarc /etc/mamba/mambarc
+COPY mambarc /etc/mamba/mambarc
 COPY micromamba-1.5.1-0 /usr/bin/micromamba
 
 RUN  useradd -ms /bin/bash notebooker && mkdir -p /home/notebooker
@@ -50,7 +50,10 @@ RUN apt-get -qq -y remove curl \
     && apt-get autoclean \
     && rm -rf /var/lib/apt/lists/* /var/log/dpkg.log
 
-COPY    start-notebook.sh /usr/bin
+RUN mkdir -p /work \
+    && chown -R notebooker:notebooker /work
+
+# COPY    start-notebook.sh /usr/bin
 USER    notebooker
 WORKDIR /home/notebooker
 CMD     mkdir -p /work \
