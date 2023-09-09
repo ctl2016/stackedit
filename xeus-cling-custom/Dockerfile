@@ -18,7 +18,7 @@ SHELL ["/bin/bash", "-c"]
 COPY sources.list /etc/apt/
 COPY apt.conf /etc/apt/
 COPY .mambarc /etc/mamba/mambarc
-COPY micromamba-1.4.9-0 /usr/bin/micromamba
+COPY micromamba-1.5.1-0 /usr/bin/micromamba
 
 RUN  useradd -ms /bin/bash notebooker && mkdir -p /home/notebooker
 
