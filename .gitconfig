@@ -1,0 +1,18 @@
+[color]
+        ui = auto
+[user]
+        name = ctl
+        email = ctl@localhost.com
+[commit]
+        template =
+[core]
+        quotepath = false
+[alias]
+        logd = log --decorate --name-only --graph --since=1.day --pretty=format:'| %Cred%h | %Cblue%an | %Cgreen%ci | %Cblue%s'
+        logw = log --decorate --name-only --graph --since=1.week --pretty=format:'| %Cred%h | %Cblue%an | %Cgreen%ci | %Cblue%s'
+        logm = log --decorate --name-only --graph --since=1.month --pretty=format:'| %Cred%h | %Cblue%an | %Cgreen%ci | %Cblue%s'
+
+[diff]
+        tool = vimdiff
+[difftool]
+        prompt = false
