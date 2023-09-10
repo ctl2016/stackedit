@@ -41,6 +41,8 @@ RUN mkdir -p /home/notebooker/micromamba \
     && micromamba install notebook==7.0.2 -y -c conda-forge \
     && micromamba install libcxx==9.0.1 -y -c conda-forge \
     && micromamba install libcxxabi==9.0.1 -y -c conda-forge \
+    && mkdir -p ~/.pip/ \
+    && pip install -i http://pypi.tuna.tsinghua.edu.cn/simple jupyterlab-language-pack-zh-CN --trusted-host pypi.tuna.tsinghua.edu.cn \
     && micromamba clean --all --yes
 
 USER root
@@ -61,4 +63,4 @@ CMD     mkdir -p /work \
 	&& export MAMBA_ROOT_PREFIX=/home/notebooker/micromamba \
 	&& eval "$(micromamba shell hook --shell bash)" \
 	&& micromamba activate \
-	&& jupyter lab --ip='*' --port=8888 --no-browser
+	&& jupyter lab --ip='*' --port=80 --no-browser
