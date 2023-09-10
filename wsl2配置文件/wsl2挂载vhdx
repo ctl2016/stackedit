@@ -1,0 +1,15 @@
+1. 挂载设备：
+
+wsl --mount --vhd D:\wsl-disk\ubuntu-18.04\wsl2_mount.vhdx
+
+--bare：不自动挂载磁盘
+
+wsl中显示:
+
+sdd      8:48   0    50G  0 disk
+└─sdd1   8:49   0    50G  0 part /mnt/sdcard1
+
+
+2. 卸载分区：
+
+wsl --unmount \\?\D:\wsl-disk\ubuntu-18.04\wsl2_mount.vhdx
