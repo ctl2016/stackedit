@@ -1,0 +1,19 @@
+
+version: '3'
+
+services:
+  db:
+    image: mariadb
+    environment:
+      - MYSQL_ROOT_PASSWORD=123456
+
+  web:
+    image: frappe/erpnext-worker
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=db
+      - DB_PASSWORD=123456
+      - ADMIN_PASSWORD=admin
