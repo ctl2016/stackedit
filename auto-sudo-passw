@@ -1,0 +1,13 @@
+两种方式：
+
+1. 从get_sudo_pass.sh返回密码:
+
+#! /bin/bash
+echo your-password
+
+$> export SUDO_ASKPASS=get_sudo_pass.sh
+$> sudo -A command
+
+2. 命令行中输入密码
+
+$> echo password | sudo -S command
