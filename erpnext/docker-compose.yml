@@ -70,7 +70,7 @@ services:
         echo "sites/common_site_config.json found";
         bench new-site frontend --no-mariadb-socket --admin-password=admin --db-root-password=admin --install-app erpnext --set-default;
         export DBname=`cat ~/frappe-bench/sites/frontend/site_config.json | awk '/db_name/ {print $$2}' | sed "s/\"//g" | sed "s/,//g"`;
-        export DBpass=`cat ~/frappe-bench/sites/frontend/site_config.json | awk '/db_password/ {print $$2}' | sed "s/\"//g"`;
+        export DBpass=`cat ~/frappe-bench/sites/frontend/site_config.json | awk '/db_password/ {print $$2}' | sed "s/\"//g" | sed "s/,//g"`;
         echo "DBname: $$DBname";
         echo "DBpass: $$DBpass";
         mysql -uroot -padmin -Bse "GRANT ALL PRIVILEGES ON *.* TO '$$DBname'@'localhost' IDENTIFIED BY '$$DBpass' WITH GRANT OPTION;";
