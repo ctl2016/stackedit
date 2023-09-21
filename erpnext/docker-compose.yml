@@ -68,18 +68,16 @@ services:
           fi
         done;
         echo "sites/common_site_config.json found";
-
         bench new-site frontend --no-mariadb-socket --admin-password=admin --db-root-password=admin --install-app erpnext --set-default;
-
-        DBname=$(cat ~/frappe-bench/sites/frontend/site_config.json | awk '/db_name/ {print $2}' | sed "s/\"//g" | sed "s/,//g")
-        DBpass=$(cat ~/frappe-bench/sites/frontend/site_config.json | awk '/db_password/ {print $2}' | sed "s/\"//g")
-        mysql -uroot -padmin -Bse "GRANT ALL PRIVILEGES ON *.* TO '$DBname'@'localhost' IDENTIFIED BY '$DBpass' WITH GRANT OPTION;"
-        mysql -uroot -padmin -Bse "GRANT ALL PRIVILEGES ON *.* TO '$DBname'@'127.0.0.1' IDENTIFIED BY '$DBpass' WITH GRANT OPTION;"
-        mysql -uroot -padmin -Bse "set password for '$DBname'@'localhost' = password('$DBpass');"
-        mysql -uroot -padmin -Bse "set password for '$DBname'@'127.0.0.1' = password('$DBpass');"
-
+        export DBname=`cat ~/frappe-bench/sites/frontend/site_config.json | awk '/db_name/ {print $$2}' | sed "s/\"//g" | sed "s/,//g"`;
+        export DBpass=`cat ~/frappe-bench/sites/frontend/site_config.json | awk '/db_password/ {print $$2}' | sed "s/\"//g"`;
+        echo "DBname: $$DBname"
+        echo "DBpass: $$DBpass"
+        mysql -uroot -padmin -Bse "GRANT ALL PRIVILEGES ON *.* TO '$DBname'@'localhost' IDENTIFIED BY '$DBpass' WITH GRANT OPTION;";
+        mysql -uroot -padmin -Bse "GRANT ALL PRIVILEGES ON *.* TO '$DBname'@'127.0.0.1' IDENTIFIED BY '$DBpass' WITH GRANT OPTION;";
+        mysql -uroot -padmin -Bse "set password for '$DBname'@'localhost' = password('$DBpass');";
+        mysql -uroot -padmin -Bse "set password for '$DBname'@'127.0.0.1' = password('$DBpass');";
         bench new-site frontend;
-
   db:
     image: mariadb:10.6
     healthcheck:
