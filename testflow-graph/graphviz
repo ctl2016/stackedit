@@ -1,0 +1,46 @@
+digraph G {
+    subgraph cluster_main {
+        InitGlobal [label="initGlobal"];
+        ChkOtaEvt [label="Cond-ChkOtaEvt"];
+        StartZmqSvr [label="StartZmqSvr"];
+        ChkActState [label="ChkActState"];
+        StartFlash [label="StartFlash"];
+        StartAct [label="StartAct"];
+        FlashSoc [label="FlashSoc"];
+        FlashMcu [label="FlashMcu"];
+        ActSoc [label="ActSoc"];
+        ActMcu [label="ActMcu"];
+        Reboot [label="Reboot"];
+        
+        InitGlobal [ color=black fillcolor=red style=filled ];
+        ChkOtaEvt [ shape=diamond color=black fillcolor=aquamarine style=filled ];
+        
+        InitGlobal -> StartZmqSvr;
+        InitGlobal-> ChkActState -> ChkOtaEvt;
+        
+        ChkOtaEvt -> StartFlash [label="0" style=dashed];
+        
+        StartFlash -> ChkOtaEvt [style=dashed];
+        ChkOtaEvt -> StartAct [label="1" style=dashed];
+        
+        subgraph cluster_1 {
+            node [style=filled,color=white];
+            label = "sub: Flash";
+            style=filled;
+            color=lightgrey;
+            FlashSoc -> StartFlash;
+            FlashMcu -> StartFlash;
+        }
+    
+        subgraph cluster_2 {
+            node [style=filled,color=white];
+            label = "sub: activate";
+            style=filled;
+            color=lightgrey;
+            ActSoc -> StartAct;
+            ActMcu -> StartAct;
+        }
+
+        StartAct -> Reboot;
+    }
+}
