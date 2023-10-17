@@ -20,7 +20,7 @@ digraph G {
         InitGlobal-> ChkActState -> ChkOtaEvt;
 
         ChkOtaEvt -> StartFlash [label="0" style=dashed];
-        ChkOtaEvt -> StartAct [label="0" style=dashed];
+        ChkOtaEvt -> StartAct [label="1" style=dashed];
 
         subgraph cluster_1 {
             node [style=filled,color=white];
