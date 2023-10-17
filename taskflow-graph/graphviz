@@ -4,28 +4,27 @@ digraph G {
         ChkOtaEvt [label="Cond-ChkOtaEvt"];
         StartZmqSvr [label="StartZmqSvr"];
         ChkActState [label="ChkActState"];
-        StartFlash [label="StartFlash"];
-        StartAct [label="StartAct"];
+        StartFlash [label="falsh"];
+        StartAct [label="activate"];
         FlashSoc [label="FlashSoc"];
         FlashMcu [label="FlashMcu"];
         ActSoc [label="ActSoc"];
         ActMcu [label="ActMcu"];
-        Reboot [label="Reboot"];
-        
+        endFlash[label="endFlash" shape=diamond color=black fillcolor=aquamarine style=filled];
+        endAct[label="endAct" shape=diamond color=black fillcolor=aquamarine style=filled];
+
         InitGlobal [ color=black fillcolor=red style=filled ];
         ChkOtaEvt [ shape=diamond color=black fillcolor=aquamarine style=filled ];
         
         InitGlobal -> StartZmqSvr;
         InitGlobal-> ChkActState -> ChkOtaEvt;
-        
+
         ChkOtaEvt -> StartFlash [label="0" style=dashed];
-        
-        StartFlash -> ChkOtaEvt [style=dashed];
-        ChkOtaEvt -> StartAct [label="1" style=dashed];
-        
+        ChkOtaEvt -> StartAct [label="0" style=dashed];
+
         subgraph cluster_1 {
             node [style=filled,color=white];
-            label = "sub: Flash";
+            label = "Subflow: flash";
             style=filled;
             color=lightgrey;
             FlashSoc -> StartFlash;
@@ -34,13 +33,15 @@ digraph G {
     
         subgraph cluster_2 {
             node [style=filled,color=white];
-            label = "sub: activate";
+            label = "Subflow: activate";
             style=filled;
             color=lightgrey;
             ActSoc -> StartAct;
             ActMcu -> StartAct;
         }
 
-        StartAct -> Reboot;
+        StartAct -> endAct -> ChkOtaEvt [style=dashed label="0"];
+        StartFlash -> endFlash -> ChkOtaEvt [style=dashed label="0"];
+
     }
 }
