@@ -12,6 +12,7 @@ digraph G {
         ActMcu [label="ActMcu"];
         endFlash[label="endFlash" shape=diamond color=black fillcolor=aquamarine style=filled];
         endAct[label="endAct" shape=diamond color=black fillcolor=aquamarine style=filled];
+        reboot [label="Reboot"];
 
         InitGlobal [ color=black fillcolor=red style=filled ];
         ChkOtaEvt [ shape=diamond color=black fillcolor=aquamarine style=filled ];
@@ -42,6 +43,6 @@ digraph G {
 
         StartAct -> endAct -> ChkOtaEvt [style=dashed label="0"];
         StartFlash -> endFlash -> ChkOtaEvt [style=dashed label="0"];
-
+        endFlash -> reboot [style=dashed label="1"];
     }
 }
