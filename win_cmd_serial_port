@@ -1,0 +1,47 @@
+@echo off
+setlocal enabledelayedexpansion
+
+set empty=""
+
+set "tempFile=.\serial_config.txt"
+
+rem 检查是否存在临时文件，如果存在则读取其中的值
+if exist "%tempFile%" (
+    for /f "usebackq tokens=1,2 delims=: " %%a in ("%tempFile%") do (
+        set "param=%%a"
+        set "value=%%b"
+        if "!param!"=="com" set "com=!value!"
+        if "!param!"=="baud" set "baud=!value!"
+        if "!param!"=="parity" set "parity=!value!"
+        if "!param!"=="data" set "data=!value!"
+        if "!param!"=="stop" set "stop=!value!"
+    )
+
+    rm -f > "%tempFile%"
+)
+
+set /p com=请输入串口号（例如 COM1）[!com!]: 
+if "%com%"=="" set "com=!com!"
+echo com: !com!>>"%tempFile%"
+
+set /p baud=请输入波特率（例如 9600）[!baud!]: 
+if "%baud%"=="" set "baud=!baud!"
+echo baud: !baud!>>"%tempFile%"
+
+set /p parity=请输入奇偶校验（例如 n）[!parity!]: 
+if "%parity%"=="" set "parity=!parity!"
+echo parity: !parity!>>"%tempFile%"
+
+set /p data=请输入数据位（例如 8）[!data!]: 
+if "%data%"=="" set "data=!data!"
+echo data: !data!>>"%tempFile%"
+
+set /p stop=请输入停止位（例如 1）[!stop!]: 
+if "%stop%"=="" set "stop=!stop!"
+echo stop: !stop!>>"%tempFile%"
+
+mode !com!: BAUD=!baud! PARITY=!parity! DATA=!data! STOP=!stop!
+
+type %com%
+
+pause
