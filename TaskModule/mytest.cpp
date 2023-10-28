@@ -3,6 +3,7 @@
 #include <atomic>
 #include <thread>
 #include <taskflow/taskflow.hpp>
+#include <unordered_map>
 
 void flash()
 {
@@ -102,23 +103,13 @@ class TaskModule {
 
 public:
 
-    TaskModule()
+    TaskModule(const std::string& strName, bool bCondition = false):m_strName(strName), m_bCondition(bCondition)
     {
     }
 
-    TaskModule(const std::string& strName)
+    virtual int32_t Run()
     {
-        m_strName = strName;
-    }
-
-    virtual void Run()
-    {
-        std::cout << "Run(" << m_strName << ")";
-    }
-
-    virtual int32_t RunCond()
-    {
-        std::cout << "RunCond(" << m_strName << ")";
+        std::cout << "Run(" << m_strName << ")\n";
         return 0;
     }
 
@@ -127,37 +118,36 @@ public:
         return m_strName;
     }
 
-    TaskModule& operator >> (TaskModule& task)
+    TaskModule& operator >> (TaskModule* task)
     {
-        std::cout << m_strName << " >> " << task.Name() << "\n";
-        return task;
+        std::cout << m_strName << " >> " << task->Name() << "\n";
+		m_lst.push_back(task);
+        return *task;
     }
 
-    TaskModule& Cond(const std::initializer_list<TaskModule>& tasks)
+    TaskModule& Before(const std::initializer_list<TaskModule*>& tasks)
     {
         for (const auto t : tasks)
         {
-            std::cout << m_strName << " Cond >> " << t.Name() << "\n";
-            m_lstCond.push_back(&t);
+            std::cout << m_strName << " Before >> " << t->Name() << "\n";
+            m_lst.push_back(t);
         }
 
         return *this;
     }
 
-    TaskModule& Before(const std::initializer_list<TaskModule>& tasks)
+    const std::list<const TaskModule*>& GetList() const
     {
-        for (const auto& t : tasks)
-        {
-            std::cout << m_strName << " Before >> " << t.Name() << "\n";
-            m_lst.push_back(&t);
-        }
+        return m_lst;
+    }
 
-        return *this;
+    bool IsCondition() const {
+        return m_bCondition; 
     }
 
 private:
     std::string m_strName;
-    std::list<const TaskModule*> m_lstCond;
+    bool m_bCondition;
     std::list<const TaskModule*> m_lst;
 };
 
@@ -165,36 +155,98 @@ class TaskExecutor {
 
 public:
 
-    TaskExecutor(const std::initializer_list<TaskModule>& tasks)
+    TaskExecutor(const std::initializer_list<TaskModule*>& tasks)
     {
         for (const auto& t : tasks)
         {
-            std::cout << t.Name() << "\n";
+            tf::Task curr;
+
+            if(!FindTask(t->Name(), curr))
+            {
+                if(t->IsCondition())
+                {
+                    curr = m_taskflow.emplace([tc = *t]() mutable { return tc.Run(); });
+                }
+                else
+                {
+                    curr = m_taskflow.emplace([tc = *t]() mutable { (void)tc.Run(); });
+                }
+
+                curr.name(t->Name());
+                m_mapTasks[t->Name()] = curr;
+            }
+
+            std::cout << t->Name() << "\n";
+
+            const std::list<const TaskModule*>& lst = t->GetList();
+
+            for (const auto& lt : lst)
+            {
+				std::cout << lt->Name() << " lt \n";
+                tf::Task next;
+
+                if(!FindTask(lt->Name(), next))
+                {
+                    if(lt->IsCondition())
+                    {
+                        next = m_taskflow.emplace([tn = *lt]() mutable { return tn.Run(); });
+                    }
+                    else
+                    {
+                        next = m_taskflow.emplace([tn = *lt]() mutable { (void)tn.Run(); });
+                    }
+                    next.name(lt->Name());
+                    m_mapTasks[lt->Name()] = next;
+                }
+
+				curr.precede(next);
+            }
         }
     }
 
     void Run()
     {
+		m_executor.run(m_taskflow).wait();
+		m_taskflow.dump(std::cout);
     }
 
 protected:
-    tf::Taskflow taskflow;
-    tf::Executor executor;
+
+    bool FindTask(const std::string& strName, tf::Task& task)
+    {
+        auto it = m_mapTasks.find(strName);
+
+        if(it != m_mapTasks.end())
+        {
+            task = it->second;
+            return true;
+        }
+
+        return false;
+    }
+
+protected:
+    std::unordered_map<std::string, tf::Task> m_mapTasks;
+    tf::Taskflow m_taskflow;
+    tf::Executor m_executor;
 };
 
 void module()
 {
-    TaskModule t1("t1"), t2("t2"), t3("t3"), t4("t4"), t5("t5"), t6("t6");
+    TaskModule t1("t1"), t2("t2"), t3("t3", true), t4("t4"), t5("t5"), t6("t6");
 
-    t1.Cond({t2, t3, t4}) >> t5 >> t6;
+    t1.Before({&t2, &t3, &t4}) >> &t5 >> &t6;
 
-    t2.Before({ t4, t5 }) >> t3;
+    t3 >> &t4;
 
-    t3 >> t4;
-
-    TaskExecutor exec({t1, t2, t3, t4, t5, t6});
+    TaskExecutor exec({&t1, &t2, &t3, &t4, &t5, &t6});
 
     exec.Run();
+}
+
+int test()
+{
+    return 1;
 }
 
 int main() {
@@ -206,7 +258,7 @@ int main() {
     std::atomic<int> counter(0);
 
     auto [ a0, a1, a2, a3, a4, a5, a6, a7 ] = taskflow.emplace(
-            [&] { std::cout << "a0\n"; },
+            [&] { std::cout << "a0\n"; return (void)test(); },
             [&] { std::cout << "a1\n"; },
             [&] { std::cout << "a2\n"; },
             [&] { std::cout << "a3\n"; },
@@ -228,7 +280,9 @@ int main() {
     //a0 >> a1 >> a2.cond(a3, a4) >> a5;
     //a0.out("") >> a2;
 
-    a0.precede(a4,a6,a7);
+    //a0.precede(a4,a6,a7);
+
+    a0.precede(a3);
 
     a5.succeed(a1, a2, a3);
     a7.succeed(a3, a5);
@@ -238,3 +292,4 @@ int main() {
 
     return 0;
 }
+
