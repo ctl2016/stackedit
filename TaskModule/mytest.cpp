@@ -99,23 +99,36 @@ void flash()
 #include <cstdarg>
 #include <list>
 
+class TaskRunner {
+
+public:
+
+    virtual uint32_t Run()
+    {
+        std::cout << "Run(" << "m_strName" << ")\n";
+        return 0;
+    }
+};
+
 class TaskModule {
 
 public:
 
-    TaskModule(const std::string& strName, bool bCondition = false):m_strName(strName), m_bCondition(bCondition)
+    TaskModule(const std::string& strName, TaskRunner* runner, bool bCond = false):
+        m_strName(strName),
+        m_pRunner(runner),
+        m_bCondition(bCond)
     {
-    }
-
-    virtual int32_t Run()
-    {
-        std::cout << "Run(" << m_strName << ")\n";
-        return 0;
     }
 
     const std::string& Name() const
     {
         return m_strName;
+    }
+
+    int32_t Run()
+    {
+        return m_pRunner->Run();
     }
 
     TaskModule& operator >> (TaskModule* task)
@@ -145,8 +158,9 @@ public:
         return m_bCondition; 
     }
 
-private:
+protected:
     std::string m_strName;
+    TaskRunner* m_pRunner;
     bool m_bCondition;
     std::list<const TaskModule*> m_lst;
 };
@@ -231,22 +245,36 @@ protected:
     tf::Executor m_executor;
 };
 
+class TaskA : public TaskRunner
+{
+public:
+    uint32_t Run()
+    {
+        std::cout << "TaskA::" << "\n";
+        return 0;
+    }
+};
+
+class TaskB : public TaskRunner
+{
+public:
+    uint32_t Run()
+    {
+        std::cout << "TaskB::" << "\n";
+        return 0;
+    }
+};
+
 void module()
 {
-    TaskModule t1("t1"), t2("t2"), t3("t3", true), t4("t4"), t5("t5"), t6("t6");
-
+    TaskA a;
+    TaskB b;
+    TaskModule t1("t1", &a), t2("t2", &a), t4("t4", &a), t5("t5", &b), t6("t6", &b);
+    TaskModule t3("t3", &b, true);
     t1.Before({&t2, &t3, &t4}) >> &t5 >> &t6;
-
-    t3 >> &t4;
-
+    t3.Before({&t4, &t6});
     TaskExecutor exec({&t1, &t2, &t3, &t4, &t5, &t6});
-
     exec.Run();
-}
-
-int test()
-{
-    return 1;
 }
 
 int main() {
@@ -258,7 +286,7 @@ int main() {
     std::atomic<int> counter(0);
 
     auto [ a0, a1, a2, a3, a4, a5, a6, a7 ] = taskflow.emplace(
-            [&] { std::cout << "a0\n"; return (void)test(); },
+            [&] { std::cout << "a0\n"; },
             [&] { std::cout << "a1\n"; },
             [&] { std::cout << "a2\n"; },
             [&] { std::cout << "a3\n"; },
