@@ -15,6 +15,7 @@ Plug 'preservim/tagbar'
 Plug 'tomasiser/vim-code-dark'
 Plug 'thinca/vim-quickrun'
 Plug 'christoomey/vim-system-copy'
+Plug 'will133/vim-dirdiff'
 call plug#end()
 
 function! HelpCmd()
@@ -33,10 +34,17 @@ function! HelpCmd()
 	echo "\n"
 endfunction
 
+function! Cmd()
+    let p = argv()[1]
+    echo "p:${p}"
+	echo "\n"
+endfunction
+
 colorscheme codedark
 set number
 set tabstop=4
 set expandtab
+set autoindent
 set shiftwidth=4
 set softtabstop=4
 
@@ -55,6 +63,12 @@ let g:tagbar_auto_open = 0
 " set clipboard=unnamedplus
 let g:system_copy#copy_command='xclip -sel clipboard'
 let g:system_copy#paste_command='xclip -sel clipboard -o'
+
+" DirDiff
+let g:DirDiffGetKeyMap = '<Leader>dg'
+let g:DirDiffPutKeyMap = '<Leader>dp'
+let g:DirDiffNextKeyMap = '<Leader>dj'
+let g:DirDiffPrevKeyMap = '<Leader>dk'
 
 " 启动 Vim 时自动打开 Tagbar
 " autocmd VimEnter * TagbarOpen
@@ -86,4 +100,3 @@ nnoremap <silent> <leader>tag :Tagbar<CR>
 
 " Ctrl + f
 nnoremap <silent> <c-f> :CtrlP<CR>
-
