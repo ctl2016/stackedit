@@ -78,18 +78,7 @@ public:
 
             if(nullptr == curr)
             {
-                if(t->IsCondition())
-                {
-                    m_mapTasks[t] = m_taskflow.emplace([&t]() { return t->Run(); });
-                }
-                else
-                {
-                    m_mapTasks[t] = m_taskflow.emplace([&t]() { printf("ru: %p\n", t);(void)t->Run(); });
-                }
-
-                curr = &m_mapTasks[t];
-                (*curr).name(t->Name());
-                std::cout << "TaskExecutor: " << t->Name() << ", cond: " << t->IsCondition() << "\n";
+                curr = AddTask(t);
             }
 
             std::list<TaskModule*>& lst = t->GetList();
@@ -100,18 +89,7 @@ public:
 
                 if(nullptr == next)
                 {
-                    if(lt->IsCondition())
-                    {
-                        m_mapTasks[lt] = m_taskflow.emplace([&lt]() { return lt->Run(); });
-                    }
-                    else
-                    {
-                        m_mapTasks[lt] = m_taskflow.emplace([&lt]() { (void)lt->Run(); });
-                    }
-
-                    next = &m_mapTasks[lt];
-                    (*next).name(lt->Name());
-                    std::cout << "TaskExecutor next: " << lt->Name() << ", cond: " << lt->IsCondition() << "\n";
+                    next = AddTask(lt);
                 }
 
                 (*curr).precede(*next);
@@ -130,13 +108,27 @@ protected:
     tf::Task* FindTask(TaskModule* pMod)
     {
         auto it = m_mapTasks.find(pMod);
-
         if(it != m_mapTasks.end())
         {
             return &it->second;
         }
-
         return nullptr;
+    }
+
+    tf::Task* AddTask(TaskModule* pMod)
+    {
+        if(pMod->IsCondition())
+        {
+            m_mapTasks[pMod] = m_taskflow.emplace([=]() { return pMod->Run(); });
+        }
+        else
+        {
+            m_mapTasks[pMod] = m_taskflow.emplace([=]() { (void)pMod->Run(); });
+        }
+
+        tf::Task* curr = &m_mapTasks[pMod];
+        curr->name(pMod->Name());
+        return curr;
     }
 
 protected:
@@ -336,8 +328,8 @@ void module()
     TModule<EndFlash>    modEndFlash;
     TModule<EndAct>      modEndAct;
     TModule<Reboot>      modReboot;
-
-	modInitGlobal.Before({&modChkActState, &modStartZmqSvr});
+    
+    modInitGlobal.Before({&modChkActState, &modStartZmqSvr});
 	modChkActState >> &modChkOtaEvt.Before({&modFlash, &modActivate});
     modActivate >> &modEndAct.Before({&modReboot, &modChkOtaEvt});
     modFlash >> &modEndFlash >> &modChkOtaEvt;
@@ -345,8 +337,7 @@ void module()
     printf("ini: %p\n", &modInitGlobal);
 
     TaskExecutor exec({
-            &modInitGlobal
-            /*
+            &modInitGlobal,
             &modStartZmqSvr,
             &modChkActState,
             &modChkOtaEvt,
@@ -355,7 +346,6 @@ void module()
             &modEndFlash,
             &modEndAct,
             &modReboot
-            */
     });
 
     exec.Run();
@@ -365,4 +355,3 @@ int main() {
     module();
     return 0;
 }
-
