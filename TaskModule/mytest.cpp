@@ -10,16 +10,37 @@
 #include <list>
 #include <typeinfo>
 
+enum TaskPrio
+{
+    HI = 0,
+    NO = 1,
+    LO = 2,
+};
+
 class TaskModule
 {
 public:
+    TaskModule() : m_priority(TaskPrio::NO)
+    {
+    }
+
     virtual const std::string Name() const = 0;
     virtual bool IsCondition() const = 0;
     virtual uint32_t Run() = 0;
 
+    void SetPriority(TaskPrio prio)
+    {
+        m_priority = prio;
+    }
+
+    TaskPrio GetPriority()
+    {
+        return m_priority;
+    }
+
     TaskModule& operator >> (TaskModule* task)
     {
-        std::cout << "TaskModule: " << Name() << " >> " << task->Name() << "\n";
+        //std::cout << "TaskModule: " << Name() << " >> " << task->Name() << "\n";
 		m_lst.push_back(task);
         return *task;
     }
@@ -28,7 +49,7 @@ public:
     {
         for (auto& t : tasks)
         {
-            std::cout << "TaskModule: " << Name() << " Before >> " << t->Name() << "\n";
+            //std::cout << "TaskModule: " << Name() << " Before >> " << t->Name() << "\n";
             m_lst.push_back(t);
         }
 
@@ -41,6 +62,7 @@ public:
     }
 
 protected:
+    TaskPrio m_priority;
     std::list<TaskModule*> m_lst;
 };
 
@@ -70,7 +92,7 @@ public:
 class TaskExecutor
 {
 public:
-    TaskExecutor(const std::initializer_list<TaskModule*>& tasks)
+    TaskExecutor(const std::string& strName, const std::initializer_list<TaskModule*>& tasks): m_taskflow(strName)
     {
         for (auto& t : tasks)
         {
@@ -97,9 +119,15 @@ public:
         }
     }
 
-    void Run()
+    void Run(uint32_t nWorkers = 0)
     {
-		m_executor.run(m_taskflow).get();
+        if(nWorkers == 0)
+        {
+            nWorkers = std::thread::hardware_concurrency();
+        }
+
+        tf::Executor executor(nWorkers);
+        executor.run(m_taskflow).get();
 		m_taskflow.dump(std::cout);
     }
 
@@ -128,13 +156,26 @@ protected:
 
         tf::Task* curr = &m_mapTasks[pMod];
         curr->name(pMod->Name());
+        
+        switch(pMod->GetPriority())
+        {
+            case TaskPrio::HI:
+                curr->priority(tf::TaskPriority::HIGH);
+                break;
+            case TaskPrio::NO:
+                curr->priority(tf::TaskPriority::NORMAL);
+                break;
+            case TaskPrio::LO:
+                curr->priority(tf::TaskPriority::LOW);
+                break;
+        }
+
         return curr;
     }
 
 protected:
     std::unordered_map<TaskModule*, tf::Task> m_mapTasks;
     tf::Taskflow m_taskflow;
-    tf::Executor m_executor;
 };
 
 class InitGlobal
@@ -328,15 +369,15 @@ void module()
     TModule<EndFlash>    modEndFlash;
     TModule<EndAct>      modEndAct;
     TModule<Reboot>      modReboot;
-    
-    modInitGlobal.Before({&modChkActState, &modStartZmqSvr});
+
+    modInitGlobal.Before({&modStartZmqSvr, &modChkActState});
 	modChkActState >> &modChkOtaEvt.Before({&modFlash, &modActivate});
     modActivate >> &modEndAct.Before({&modReboot, &modChkOtaEvt});
     modFlash >> &modEndFlash >> &modChkOtaEvt;
 
-    printf("ini: %p\n", &modInitGlobal);
+    modStartZmqSvr.SetPriority(TaskPrio::HI);
 
-    TaskExecutor exec({
+    TaskExecutor exec("OTA", {
             &modInitGlobal,
             &modStartZmqSvr,
             &modChkActState,
@@ -353,5 +394,30 @@ void module()
 
 int main() {
     module();
+/*
+    tf::Executor executor(5);
+    tf::Taskflow taskflow("test");
+
+    printf("threads: %d\n", executor.num_workers());
+
+    for(int i=0; i<5; i++) {
+        taskflow.emplace([=](){
+                printf("thread:%ld\n", pthread_self());
+                std::this_thread::sleep_for(std::chrono::seconds(i));
+                });
+    }
+
+    // submit the taskflow
+    tf::Future fu = executor.run(taskflow);
+
+    // request to cancel the submitted execution above
+    //fu.cancel();
+
+    // wait until the cancellation finishes
+    fu.get();
+
+    taskflow.dump(std::cout);
+*/
     return 0;
 }
+
