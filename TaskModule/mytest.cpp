@@ -41,7 +41,7 @@ public:
     TaskModule& operator >> (TaskModule* task)
     {
         //std::cout << "TaskModule: " << Name() << " >> " << task->Name() << "\n";
-		m_lst.push_back(task);
+		m_lstNext.push_back(task);
         return *task;
     }
 
@@ -50,42 +50,60 @@ public:
         for (auto& t : tasks)
         {
             //std::cout << "TaskModule: " << Name() << " Before >> " << t->Name() << "\n";
-            m_lst.push_back(t);
+            m_lstNext.push_back(t);
         }
 
         return *this;
     }
 
-    std::list<TaskModule*>& GetList()
+    TaskModule& After(const std::initializer_list<TaskModule*>& tasks)
     {
-        return m_lst;
+        for (auto& t : tasks)
+        {
+            //std::cout << "TaskModule: " << Name() << " Before >> " << t->Name() << "\n";
+            m_lstPrev.push_back(t);
+        }
+
+        return *this;
+    }
+
+    std::list<TaskModule*>& GetNextList()
+    {
+        return m_lstNext;
+    }
+
+    std::list<TaskModule*>& GetPrevList()
+    {
+        return m_lstPrev;
     }
 
 protected:
     TaskPrio m_priority;
-    std::list<TaskModule*> m_lst;
+    std::list<TaskModule*> m_lstNext;
+    std::list<TaskModule*> m_lstPrev;
 };
 
-template<typename TRunner>
+template<typename TRunner, bool bIsCondition = false>
 class TModule : public TaskModule
 {
 public:
     const std::string Name() const override
     {
-        return m_Runner.Name();
+        return typeid(TRunner).name();
     }
 
     bool IsCondition() const override
 	{
-        return m_Runner.IsCondition();
+        return bIsCondition;
     }
 
     uint32_t Run() override
     {
+        std::cout << "Run class: " << Name() << " begin\n";
         return m_Runner.Run();
     }
 
-public:
+private:
     TRunner m_Runner;
 };
 
@@ -96,26 +114,44 @@ public:
     {
         for (auto& t : tasks)
         {
-            tf::Task* curr = FindTask(t);
+            std::set<TaskModule*> visited;
+            visit(t, visited, [=](TaskModule* mod, TaskModule* pPrev, TaskModule* pNext) {
 
-            if(nullptr == curr)
-            {
-                curr = AddTask(t);
-            }
+                    tf::Task* prev = nullptr;
+                    tf::Task* next = nullptr;
+                    tf::Task* curr = FindTask(mod);
 
-            std::list<TaskModule*>& lst = t->GetList();
+                    if(nullptr == curr)
+                    {
+                        curr = AddTask(mod);
+                    }
 
-            for (auto& lt : lst)
-            {
-                tf::Task* next = FindTask(lt);
+                    if(pPrev != nullptr)
+                    {
+                        prev = FindTask(pPrev);
 
-                if(nullptr == next)
-                {
-                    next = AddTask(lt);
-                }
+                        if(nullptr == prev)
+                        {
+                            prev = AddTask(pPrev);
+                        }
+                        
+                        (*curr).succeed(*prev);
+                    }
 
-                (*curr).precede(*next);
-            }
+                    if(pNext != nullptr)
+                    {
+                        next = FindTask(pNext);
+
+                        if(nullptr == next)
+                        {
+                            next = AddTask(pNext);
+                        }
+
+                        (*curr).precede(*next);
+                    }
+
+                    //std::cout << (pPrev ? pPrev->Name():"")<< " < " << pCurr->Name() << " > " << (pNext ? pNext->Name():"")<< std::endl;
+            });
         }
     }
 
@@ -173,6 +209,28 @@ protected:
         return curr;
     }
 
+    void visit(TaskModule* pMod, std::set<TaskModule*>& visited, const std::function<void(TaskModule* mod, TaskModule* pPrev, TaskModule* pNext)>& lambda)
+    {
+        if (visited.count(pMod) > 0 || pMod == nullptr)
+            return;
+
+        visited.insert(pMod);
+
+        // prev list
+        for (auto& prev : pMod->GetPrevList())
+        {
+            lambda(pMod, prev, nullptr);
+            visit(prev, visited, lambda);
+        }
+
+        // next list
+        for (auto& next : pMod->GetNextList())
+        {
+            lambda(pMod, nullptr, next);
+            visit(next, visited, lambda);
+        }
+    }
+
 protected:
     std::unordered_map<TaskModule*, tf::Task> m_mapTasks;
     tf::Taskflow m_taskflow;
@@ -181,19 +239,9 @@ protected:
 class InitGlobal
 {
 public:
-    const std::string Name() const
-    {
-        return typeid(*this).name();
-    }
-
-    bool IsCondition() const
-    {
-        return false;
-    }
-
     uint32_t Run()
     {
-        std::cout << "Run class: " << Name() << "\n";
+        std::cout << "Run class end\n";
         return 0;
     }
 };
@@ -201,19 +249,9 @@ public:
 class StartZmqSvr
 {
 public:
-    const std::string Name() const
-    {
-        return typeid(*this).name();
-    }
-
-    bool IsCondition() const
-    {
-        return false;
-    }
-
     uint32_t Run()
     {
-        std::cout << "Run class: " << Name() << "\n";
+        std::cout << "Run class end\n";
         return 0;
     }
 };
@@ -221,19 +259,9 @@ public:
 class ChkActState
 {
 public:
-    const std::string Name() const
-    {
-        return typeid(*this).name();
-    }
-
-    bool IsCondition() const
-    {
-        return false;
-    }
-
     uint32_t Run()
     {
-        std::cout << "Run class: " << Name() << "\n";
+        std::cout << "Run class end\n";
         return 0;
     }
 };
@@ -241,19 +269,9 @@ public:
 class ChkOtaEvt
 {
 public:
-    const std::string Name() const
-    {
-        return typeid(*this).name();
-    }
-
-    bool IsCondition() const
-    {
-        return true;
-    }
-
     uint32_t Run()
     {
-        std::cout << "Run class: " << Name() << "\n";
+        std::cout << "Run class end\n";
         return 0;
     }
 };
@@ -261,19 +279,9 @@ public:
 class Flash
 {
 public:
-    const std::string Name() const
-    {
-        return typeid(*this).name();
-    }
-
-    bool IsCondition() const
-    {
-        return false;
-    }
-
     uint32_t Run()
     {
-        std::cout << "Run class: " << Name() << "\n";
+        std::cout << "Run class end\n";
         return 0;
     }
 };
@@ -281,19 +289,9 @@ public:
 class Activate
 {
 public:
-    const std::string Name() const
-    {
-        return typeid(*this).name();
-    }
-
-    bool IsCondition() const
-    {
-        return false;
-    }
-
     uint32_t Run()
     {
-        std::cout << "Run class: " << Name() << "\n";
+        std::cout << "Run class end\n";
         return 0;
     }
 };
@@ -301,19 +299,9 @@ public:
 class EndFlash
 {
 public:
-    const std::string Name() const
-    {
-        return typeid(*this).name();
-    }
-
-    bool IsCondition() const
-    {
-        return true;
-    }
-
     uint32_t Run()
     {
-        std::cout << "Run class: " << Name() << "\n";
+        std::cout << "Run class end\n";
         return 1;
     }
 };
@@ -321,19 +309,9 @@ public:
 class EndAct
 {
 public:
-    const std::string Name() const
-    {
-        return typeid(*this).name();
-    }
-
-    bool IsCondition() const
-    {
-        return true;
-    }
-
     uint32_t Run()
     {
-        std::cout << "Run class: " << Name() << "\n";
+        std::cout << "Run class end\n";
         return 0;
     }
 };
@@ -341,58 +319,59 @@ public:
 class Reboot
 {
 public:
-    const std::string Name() const
-    {
-        return typeid(*this).name();
-    }
-
-    bool IsCondition() const
-    {
-        return false;
-    }
-
     uint32_t Run()
     {
-        std::cout << "Run class: " << Name() << "\n";
+        std::cout << "Run class end\n";
         return 0;
     }
 };
 
 void module()
 {
-    TModule<InitGlobal>  modInitGlobal;
-    TModule<StartZmqSvr> modStartZmqSvr;
-    TModule<ChkActState> modChkActState;
-    TModule<ChkOtaEvt>   modChkOtaEvt;
-    TModule<Flash>       modFlash;
-    TModule<Activate>    modActivate;
-    TModule<EndFlash>    modEndFlash;
-    TModule<EndAct>      modEndAct;
-    TModule<Reboot>      modReboot;
+    TModule<InitGlobal>        modInitGlobal;
+    TModule<StartZmqSvr>       modStartZmqSvr;
+    TModule<ChkActState>       modChkActState;
+    TModule<ChkOtaEvt, true>   modChkOtaEvt;
+    TModule<Flash>             modFlash;
+    TModule<Activate>          modActivate;
+    TModule<EndFlash, true>    modEndFlash;
+    TModule<EndAct, true>      modEndAct;
+    TModule<Reboot>            modReboot;
+
+    TModule<Flash>             modFlash1;
+    TModule<Flash>             modFlash2;
 
     modInitGlobal.Before({&modStartZmqSvr, &modChkActState});
 	modChkActState >> &modChkOtaEvt.Before({&modFlash, &modActivate});
     modActivate >> &modEndAct.Before({&modReboot, &modChkOtaEvt});
     modFlash >> &modEndFlash >> &modChkOtaEvt;
+    modFlash.After({&modFlash1, &modFlash2});
 
     modStartZmqSvr.SetPriority(TaskPrio::HI);
 
     TaskExecutor exec("OTA", {
             &modInitGlobal,
-            &modStartZmqSvr,
+            
+            /*&modStartZmqSvr,
             &modChkActState,
             &modChkOtaEvt,
             &modFlash,
             &modActivate,
             &modEndFlash,
             &modEndAct,
-            &modReboot
+            &modReboot*/
     });
 
     exec.Run();
 }
 
+template<typename T>
+void printValue(T value) {
+    std::cout << "传入的值是：" << value << std::endl;
+}
+
 int main() {
+    //printValue(5);
     module();
 /*
     tf::Executor executor(5);
