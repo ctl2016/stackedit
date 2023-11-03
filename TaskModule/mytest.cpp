@@ -17,6 +17,8 @@ enum TaskPrio
     LO = 2,
 };
 
+class IOPort;
+
 class TaskModule
 {
 public:
@@ -26,6 +28,8 @@ public:
 
     virtual const std::string Name() const = 0;
     virtual bool IsCondition() const = 0;
+    virtual void SetInput(IOPort* p) = 0;
+    virtual void SetOutput(IOPort* p) = 0;
     virtual uint32_t Run() = 0;
 
     void SetPriority(TaskPrio prio)
@@ -87,6 +91,10 @@ template<typename TRunner, bool bIsCondition = false>
 class TModule : public TaskModule
 {
 public:
+    TModule() : m_pIPort(nullptr), m_pOPort(nullptr)
+    {
+    }
+
     const std::string Name() const override
     {
         return typeid(TRunner).name();
@@ -103,8 +111,20 @@ public:
         return m_Runner.Run();
     }
 
+    void SetInput(IOPort* p)
+    {
+        m_pIPort = p;
+    }
+
+    void SetOutput(IOPort* p)
+    {
+        m_pOPort = p;
+    }
+
 private:
     TRunner m_Runner;
+    IOPort* m_pIPort;
+    IOPort* m_pOPort;
 };
 
 class TaskExecutor
@@ -115,15 +135,14 @@ public:
         for (auto& t : tasks)
         {
             std::set<TaskModule*> visited;
-            visit(t, visited, [=](TaskModule* mod, TaskModule* pPrev, TaskModule* pNext) {
-
+            Traverse(t, visited, [&](TaskModule* pCur, TaskModule* pPrev, TaskModule* pNext) {
                     tf::Task* prev = nullptr;
                     tf::Task* next = nullptr;
-                    tf::Task* curr = FindTask(mod);
+                    tf::Task* curr = FindTask(pCur);
 
                     if(nullptr == curr)
                     {
-                        curr = AddTask(mod);
+                        curr = AddTask(pCur);
                     }
 
                     if(pPrev != nullptr)
@@ -192,7 +211,7 @@ protected:
 
         tf::Task* curr = &m_mapTasks[pMod];
         curr->name(pMod->Name());
-        
+
         switch(pMod->GetPriority())
         {
             case TaskPrio::HI:
@@ -209,25 +228,31 @@ protected:
         return curr;
     }
 
-    void visit(TaskModule* pMod, std::set<TaskModule*>& visited, const std::function<void(TaskModule* mod, TaskModule* pPrev, TaskModule* pNext)>& lambda)
+    void Traverse(TaskModule* pMod, std::set<TaskModule*>& visited, const std::function<void(TaskModule* mod, TaskModule* pPrev, TaskModule* pNext)>& lambda)
     {
         if (visited.count(pMod) > 0 || pMod == nullptr)
             return;
 
         visited.insert(pMod);
 
+        if(pMod->GetPrevList().empty() &&pMod->GetNextList().empty())
+        {
+            lambda(pMod, nullptr, nullptr);
+            return;
+        }
+
         // prev list
         for (auto& prev : pMod->GetPrevList())
         {
             lambda(pMod, prev, nullptr);
-            visit(prev, visited, lambda);
+            Traverse(prev, visited, lambda);
         }
 
         // next list
         for (auto& next : pMod->GetNextList())
         {
             lambda(pMod, nullptr, next);
-            visit(next, visited, lambda);
+            Traverse(next, visited, lambda);
         }
     }
 
@@ -267,16 +292,6 @@ public:
 };
 
 class ChkOtaEvt
-{
-public:
-    uint32_t Run()
-    {
-        std::cout << "Run class end\n";
-        return 0;
-    }
-};
-
-class Flash
 {
 public:
     uint32_t Run()
@@ -326,7 +341,99 @@ public:
     }
 };
 
-void module()
+class Flash
+{
+public:
+    uint32_t Run()
+    {
+        std::cout << "Run class end\n";
+        return 0;
+    }
+};
+
+class FlashMcu
+{
+public:
+    uint32_t Run()
+    {
+        std::cout << "Run class end\n";
+        return 0;
+    }
+};
+
+class FlashSoc
+{
+public:
+    uint32_t Run()
+    {
+        std::cout << "Run class end\n";
+        return 0;
+    }
+
+protected:
+};
+
+class IOPort
+{
+public:
+
+    IOPort& operator = (IOPort& other)
+    {
+        // m_lstInput.SetInput(this);
+        return *this;
+    }
+
+    IOPort& InputOf (TaskModule* pMod)
+    {
+        pMod->SetInput(this);
+        m_lstInput.push_back(pMod);
+        return *this;
+    }
+
+    IOPort& OutputOf (TaskModule* pMod)
+    {
+        pMod->SetOutput(this);
+        return *this;
+    }
+
+protected:
+    virtual void* GetData() = 0;
+
+protected:
+    std::string m_strName;
+    std::list<TaskModule*> m_lstInput;
+};
+
+class OPort
+{
+public:
+};
+
+class IPort
+{
+public:
+};
+
+class TaskIO
+{
+};
+
+template<typename DataType>
+class TIOPort : public IOPort
+{
+public:
+
+protected:
+    void* GetData() override
+    {
+        return (void*)&m_data;
+    }
+
+protected:
+    DataType m_data;
+};
+
+void test_module()
 {
     TModule<InitGlobal>        modInitGlobal;
     TModule<StartZmqSvr>       modStartZmqSvr;
@@ -337,30 +444,26 @@ void module()
     TModule<EndFlash, true>    modEndFlash;
     TModule<EndAct, true>      modEndAct;
     TModule<Reboot>            modReboot;
+    TModule<FlashSoc>          modFlashSoc;
+    TModule<FlashMcu>          modFlashMcu;
 
-    TModule<Flash>             modFlash1;
-    TModule<Flash>             modFlash2;
+    TIOPort<int>               socProgress;
+    TIOPort<int>               mcuProgress;
 
+    // input output flow
+    socProgress.OutputOf(&modFlashSoc).InputOf(&modFlash);
+    mcuProgress.OutputOf(&modFlashMcu).InputOf(&modFlash);
+
+    // module flow
     modInitGlobal.Before({&modStartZmqSvr, &modChkActState});
 	modChkActState >> &modChkOtaEvt.Before({&modFlash, &modActivate});
     modActivate >> &modEndAct.Before({&modReboot, &modChkOtaEvt});
     modFlash >> &modEndFlash >> &modChkOtaEvt;
-    modFlash.After({&modFlash1, &modFlash2});
+    modFlash.After({&modFlashSoc, &modFlashMcu});
 
     modStartZmqSvr.SetPriority(TaskPrio::HI);
 
-    TaskExecutor exec("OTA", {
-            &modInitGlobal,
-            
-            /*&modStartZmqSvr,
-            &modChkActState,
-            &modChkOtaEvt,
-            &modFlash,
-            &modActivate,
-            &modEndFlash,
-            &modEndAct,
-            &modReboot*/
-    });
+    TaskExecutor exec("OTA", { &modInitGlobal });
 
     exec.Run();
 }
@@ -372,7 +475,7 @@ void printValue(T value) {
 
 int main() {
     //printValue(5);
-    module();
+    test_module();
 /*
     tf::Executor executor(5);
     tf::Taskflow taskflow("test");
