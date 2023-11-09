@@ -115,7 +115,7 @@ class TModule : public TaskModule
 
         uint32_t Run() override
         {
-            std::cout << "Run class: " << Name() << " begin\n";
+            //std::cout << "Run class: " << Name() << " begin\n";
             return m_Runner.Run(m_lstOutput);
         }
 
@@ -277,7 +277,7 @@ class InitGlobal
     public:
         uint32_t Run(std::list<IIOPort*>& lstOutput)
         {
-            std::cout << "Run class output size:" << lstOutput.size() << "\n";
+            //std::cout << "Run class output size:" << lstOutput.size() << "\n";
             return 0;
         }
 
@@ -292,7 +292,7 @@ class StartZmqSvr
     public:
         uint32_t Run(std::list<IIOPort*>& lstOutput)
         {
-            std::cout << "Run class output size:" << lstOutput.size() << "\n";
+            //std::cout << "Run class output size:" << lstOutput.size() << "\n";
             return 0;
         }
 
@@ -308,7 +308,7 @@ class ChkActState
     public:
         uint32_t Run(std::list<IIOPort*>& lstOutput)
         {
-            std::cout << "Run class output size:" << lstOutput.size() << "\n";
+            //std::cout << "Run class output size:" << lstOutput.size() << "\n";
             return 0;
         }
 
@@ -323,7 +323,7 @@ class ChkOtaEvt
     public:
         uint32_t Run(std::list<IIOPort*>& lstOutput)
         {
-            std::cout << "Run class output size:" << lstOutput.size() << "\n";
+            //std::cout << "Run class output size:" << lstOutput.size() << "\n";
             return 0;
         }
 
@@ -338,7 +338,7 @@ class Activate
     public:
         uint32_t Run(std::list<IIOPort*>& lstOutput)
         {
-            std::cout << "Run class output size:" << lstOutput.size() << "\n";
+            //std::cout << "Run class output size:" << lstOutput.size() << "\n";
             return 0;
         }
 
@@ -353,13 +353,13 @@ class EndFlash
     public:
         uint32_t Run(std::list<IIOPort*>& lstOutput)
         {
-            std::cout << "Run class output size:" << lstOutput.size() << "\n";
+            //std::cout << "Run class output size:" << lstOutput.size() << "\n";
             return 1;
         }
 
         void SetInput(IIOPort* p)
         {
-            std::cout << "SetInput: 0x" << std::hex << p << "\n";
+            //std::cout << "SetInput: 0x" << std::hex << p << "\n";
         }
 };
 
@@ -368,13 +368,13 @@ class EndAct
     public:
         uint32_t Run(std::list<IIOPort*>& lstOutput)
         {
-            std::cout << "Run class output size:" << lstOutput.size() << "\n";
+            //std::cout << "Run class output size:" << lstOutput.size() << "\n";
             return 0;
         }
 
         void SetInput(IIOPort* p)
         {
-            std::cout << "SetInput: 0x" << std::hex << p << "\n";
+            //std::cout << "SetInput: 0x" << std::hex << p << "\n";
         }
 };
 
@@ -383,13 +383,13 @@ class Reboot
     public:
         uint32_t Run(std::list<IIOPort*>& lstOutput)
         {
-            std::cout << "Run class output size:" << lstOutput.size() << "\n";
+            //std::cout << "Run class output size:" << lstOutput.size() << "\n";
             return 0;
         }
 
         void SetInput(IIOPort* p)
         {
-            std::cout << "SetInput: 0x" << std::hex << p << "\n";
+            //std::cout << "SetInput: 0x" << std::hex << p << "\n";
         }
 };
 
@@ -401,10 +401,10 @@ class Flash
     }
         uint32_t Run(std::list<IIOPort*>& lstOutput)
         {
-            std::cout << "Run class Flash output size:" << lstOutput.size() << "\n";
+            std::cout << "Run class Flash begin output size:" << lstOutput.size() << "\n";
             IIOPort* pInput = m_lstInput["nSocProgress"];
             uint32_t n = *((uint32_t*)pInput->GetData());
-            std::cout << "Flash Run input:" << n << "\n";
+            std::cout << "    Flash Run input:" << n << "\n";
             std::cout << "Run class Flash end\n";
             return 0;
         }
@@ -412,7 +412,7 @@ class Flash
         void SetInput(IIOPort* p)
         {
             m_lstInput[p->GetName()] = p;
-            std::cout << "SetInput: 0x" << std::hex << p << "\n";
+            std::cout << "Flash SetInput: 0x" << std::hex << p << "\n";
         }
 
     private:
@@ -424,12 +424,12 @@ class FlashSoc
     public:
         uint32_t Run(std::list<IIOPort*>& lstOutput)
         {
-            std::cout << "Run class FlashSoc end, output size:" << lstOutput.size();
+            std::cout << "Run class FlashSoc begin, output size:" << lstOutput.size() << "\n";
             IIOPort* pOutput = lstOutput.front();
             uint32_t& n = *((uint32_t*)pOutput->GetData());
             n = 100;
             pOutput->SetData(pOutput->GetData());
-            std::cout << "Run class FlashSoc end, output size:" << lstOutput.size();
+            std::cout << "Run class FlashSoc end\n";
             return 0;
         }
 
@@ -444,7 +444,7 @@ class FlashMcu
     public:
         uint32_t Run(std::list<IIOPort*>& lstOutput)
         {
-            std::cout << "Run class end, output size:" << lstOutput.size();
+            //std::cout << "Run class end, output size:" << lstOutput.size();
             return 0;
         }
 
@@ -510,19 +510,19 @@ class TIOPort : public IOPort
 
         std::string GetName() override
         {
-            return "DataName";
+            return m_strName;
         }
 
         void* GetData() override
         {
-            std::cout << "TIOPort::GetData:" << std::hex << &m_data << "\n";
+            //std::cout << "TIOPort::GetData:" << std::hex << &m_data << "\n";
             return (void*)&m_data;
         }
 
         void SetData(void* p) override
         {
             m_data = *((DataType*)p);
-            std::cout << "TIOPort::SetData:" << std::hex << p << "\n";
+            //std::cout << "TIOPort::SetData:" << std::hex << p << "\n";
         }
 
     protected:
