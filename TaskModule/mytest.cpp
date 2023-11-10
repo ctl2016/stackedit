@@ -157,7 +157,10 @@ class TModule : public TaskModule
 
         void SetInput(IOPort* p)
         {
-            m_Runner.SetInput((IIOPort*)p);
+            if(nullptr != p)
+            {
+                m_Runner.SetInput((IIOPort*)p);
+            }
         }
 
         void SetOutput(IOPort* p)
@@ -166,13 +169,6 @@ class TModule : public TaskModule
             {
                 m_mapOutput[((IIOPort*)p)->Name()] = (IIOPort*)p;
             }
-        }
-
-        template<typename T>
-        TModule<TRunner>& Output(const std::string& strName)
-        {
-            //TIOPort<T> m;
-            return *this;
         }
 
     private:
@@ -521,7 +517,6 @@ class IOPort : IIOPort
         IOPort& InputOf (TaskModule* pMod)
         {
             pMod->SetInput(this);
-            m_lstInput.push_back(pMod);
             return *this;
         }
 
@@ -547,18 +542,16 @@ class IOPort : IIOPort
         {
             return false;
         }
-
-    protected:
-        std::list<TaskModule*> m_lstInput;
 };
 
 template<typename DataType>
-class TIOPort : public IOPort
+class TIOData : public IOPort
 {
     public:
-        TIOPort(const char* pszName, const DataType& defVal) : m_strName(pszName)
+        TIOData(const char* pszName, const DataType& defVal) : 
+            m_strName(pszName),
+            m_data(defVal)
         {
-            m_data = defVal;
         }
 
     protected:
@@ -611,8 +604,8 @@ void test_module()
     TModule<FlashSoc>          modFlashSoc;
     TModule<FlashMcu>          modFlashMcu;
 
-    TIOPort<uint32_t>     socProgress("nSocProgress", 0);
-    TIOPort<uint32_t>     mcuProgress("nMcuProgress", 0);
+    TIOData<uint32_t>     socProgress("nSocProgress", 0);
+    TIOData<uint32_t>     mcuProgress("nMcuProgress", 0);
 
     // io flow
     socProgress.OutputOf(&modFlashSoc).InputOf(&modStartZmqSvr);
