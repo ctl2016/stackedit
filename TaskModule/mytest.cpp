@@ -544,12 +544,12 @@ class IOPort : IIOPort
         }
 };
 
-template<typename DataType>
-class TIOData : public IOPort
+template<typename DataType, typename Base>
+class TIOData : public Base
 {
     public:
-        TIOData(const char* pszName, const DataType& defVal) : 
-            m_strName(pszName),
+        TIOData(const std::string& strName, const DataType& defVal) : 
+            m_strName(strName),
             m_data(defVal)
         {
         }
@@ -604,8 +604,8 @@ void test_module()
     TModule<FlashSoc>          modFlashSoc;
     TModule<FlashMcu>          modFlashMcu;
 
-    TIOData<uint32_t>     socProgress("nSocProgress", 0);
-    TIOData<uint32_t>     mcuProgress("nMcuProgress", 0);
+    TIOData<uint32_t, IOPort>     socProgress("nSocProgress", 0);
+    TIOData<uint32_t, IOPort>     mcuProgress("nMcuProgress", 0);
 
     // io flow
     socProgress.OutputOf(&modFlashSoc).InputOf(&modStartZmqSvr);
