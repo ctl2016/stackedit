@@ -8,7 +8,44 @@
 #include <initializer_list>
 #include <cstdarg>
 #include <list>
+#include <sstream>
 #include <typeinfo>
+
+class Log final
+{
+    public:
+        Log()
+        {
+        };
+
+        ~Log()
+        {
+            printf("%s", os.str().c_str());
+        }
+
+        template <typename T>
+        Log& operator<<(const T &val)
+        {
+            //static_cast<std::ostringstream &>(*this) << val;
+            os << val;
+            return *this;
+        }
+
+        Log& operator<<(const Log &value)
+        {
+            //static_cast<std::ostringstream &>(*this) << value.str();
+            os << value.str();
+            return *this;
+        }
+
+        std::string str() const
+        {
+            return os.str();
+        }
+
+    public:
+        std::ostringstream os;
+};
 
 enum TaskPrio
 {
@@ -88,7 +125,7 @@ class TaskModule
 
         TaskModule& operator >> (TaskModule* task)
         {
-            //std::cout << "TaskModule: " << Name() << " >> " << task->Name() << "\n";
+            //Log() <<"TaskModule: " << Name() << " >> " << task->Name() << "\n";
             m_lstNext.push_back(task);
             return *task;
         }
@@ -97,7 +134,7 @@ class TaskModule
         {
             for (auto& t : tasks)
             {
-                //std::cout << "TaskModule: " << Name() << " Before >> " << t->Name() << "\n";
+                //Log() <<"TaskModule: " << Name() << " Before >> " << t->Name() << "\n";
                 m_lstNext.push_back(t);
             }
 
@@ -108,7 +145,7 @@ class TaskModule
         {
             for (auto& t : tasks)
             {
-                //std::cout << "TaskModule: " << Name() << " Before >> " << t->Name() << "\n";
+                //Log() <<"TaskModule: " << Name() << " Before >> " << t->Name() << "\n";
                 m_lstPrev.push_back(t);
             }
 
@@ -218,7 +255,7 @@ class TaskExecutor
                         (*curr).precede(*next);
                     }
 
-                    //std::cout << (pPrev ? pPrev->Name():"")<< " < " << pCurr->Name() << " > " << (pNext ? pNext->Name():"")<< std::endl;
+                    //Log() <<(pPrev ? pPrev->Name():"")<< " < " << pCurr->Name() << " > " << (pNext ? pNext->Name():"")<< std::endl;
             });
         }
     }
@@ -316,13 +353,13 @@ class InitGlobal
     public:
         uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
         {
-            //std::cout << "Run class output size:" << mapOutput.size() << "\n";
+            //Log() <<"Run class output size:" << mapOutput.size() << "\n";
             return 0;
         }
 
         void SetInput(IIOPort* p)
         {
-            std::cout << "SetInput: 0x" << std::hex << p << "\n";
+            Log() <<"SetInput: 0x" << std::hex << p << "\n";
         }
 };
 
@@ -331,20 +368,18 @@ class StartZmqSvr
     public:
         uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
         {
-            std::cout << "StartZmqSvr Run begin\n";
+            Log() <<"StartZmqSvr Run begin\n";
 
             while(true)
             {
-                uint32_t nSocProgress = 0;
-                uint32_t nMcuProgress = 0;
-                m_mapInput["nSocProgress"]->GetData(&nSocProgress, sizeof(nSocProgress));
-                m_mapInput["nMcuProgress"]->GetData(&nMcuProgress, sizeof(nMcuProgress));
-                std::cout << "    StartZmqSvr Run nSocProgress:" << std::dec << nSocProgress << ", nMcuProgress: " << nMcuProgress << "\n";
-                if(nSocProgress >= 100 && nMcuProgress >= 100) break;
+                uint32_t nFlashProgress = 0;
+                m_mapInput["nFlashProgress"]->GetData(&nFlashProgress, sizeof(nFlashProgress));
+                Log() <<"    StartZmqSvr Run nFlashProgress:" << std::dec << nFlashProgress << "\n";
+                if(nFlashProgress >= 100) break;
                 usleep(1000 * 100);
             }
 
-            std::cout << "StartZmqSvr Run end\n";
+            Log() <<"StartZmqSvr Run end\n";
 
             return 0;
         }
@@ -353,7 +388,7 @@ class StartZmqSvr
         void SetInput(IIOPort* p)
         {
             m_mapInput[p->Name()] = p;
-            std::cout << "StartZmqSvr SetInput: " << p->Name() << ", 0x" << std::hex << p << "\n";
+            Log() <<"StartZmqSvr SetInput: " << p->Name() << ", 0x" << std::hex << p << "\n";
         }
 
     private:
@@ -365,13 +400,13 @@ class ChkActState
     public:
         uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
         {
-            //std::cout << "Run class output size:" << mapOutput.size() << "\n";
+            Log() <<"Run class ChkActState output size:" << mapOutput.size() << "\n";
             return 0;
         }
 
         void SetInput(IIOPort* p)
         {
-            std::cout << "SetInput: 0x" << std::hex << p << "\n";
+            Log() <<"SetInput: 0x" << std::hex << p << "\n";
         }
 };
 
@@ -380,13 +415,13 @@ class ChkOtaEvt
     public:
         uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
         {
-            //std::cout << "Run class output size:" << mapOutput.size() << "\n";
+            Log() <<"Run class ChkOtaEvt output size:" << mapOutput.size() << "\n";
             return 0;
         }
 
         void SetInput(IIOPort* p)
         {
-            std::cout << "SetInput: 0x" << std::hex << p << "\n";
+            Log() <<"SetInput: 0x" << std::hex << p << "\n";
         }
 };
 
@@ -395,43 +430,13 @@ class Activate
     public:
         uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
         {
-            //std::cout << "Run class output size:" << mapOutput.size() << "\n";
+            Log() <<"Run class Activate output size:" << mapOutput.size() << "\n";
             return 0;
         }
 
         void SetInput(IIOPort* p)
         {
-            std::cout << "SetInput: 0x" << std::hex << p << "\n";
-        }
-};
-
-class EndFlash
-{
-    public:
-        uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
-        {
-            //std::cout << "Run class output size:" << mapOutput.size() << "\n";
-            return 1;
-        }
-
-        void SetInput(IIOPort* p)
-        {
-            //std::cout << "SetInput: 0x" << std::hex << p << "\n";
-        }
-};
-
-class EndAct
-{
-    public:
-        uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
-        {
-            //std::cout << "Run class output size:" << mapOutput.size() << "\n";
-            return 0;
-        }
-
-        void SetInput(IIOPort* p)
-        {
-            //std::cout << "SetInput: 0x" << std::hex << p << "\n";
+            Log() <<"SetInput: 0x" << std::hex << p << "\n";
         }
 };
 
@@ -440,30 +445,51 @@ class Reboot
     public:
         uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
         {
-            //std::cout << "Run class output size:" << mapOutput.size() << "\n";
+            //Log() <<"Run class output size:" << mapOutput.size() << "\n";
             return 0;
         }
 
         void SetInput(IIOPort* p)
         {
-            //std::cout << "SetInput: 0x" << std::hex << p << "\n";
+            //Log() <<"SetInput: 0x" << std::hex << p << "\n";
         }
 };
 
 class Flash
 {
     public:
-        Flash()
-    {
-    }
         uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
         {
-            return 0;
+            Log() <<"Flash Run start\n";
+
+            while(true)
+            {
+                uint32_t nSocProgress = 0;
+                uint32_t nMcuProgress = 0;
+                m_mapInput["nSocProgress"]->GetData(&nSocProgress, sizeof(nSocProgress));
+                m_mapInput["nMcuProgress"]->GetData(&nMcuProgress, sizeof(nMcuProgress));
+                Log() <<"    Flash Run nSocProgress:" << std::dec << nSocProgress << ", nMcuProgress: " << nMcuProgress << "\n";
+                IIOPort* pOutput = mapOutput["nFlashProgress"];
+                pOutput->SetData(&nSocProgress, sizeof(nSocProgress));
+
+                if(nSocProgress >= 100 && nMcuProgress >= 100) break;
+                usleep(1000 * 100);
+            }
+
+            Log() <<"Flash Run stop\n";
+
+            return 1;
         }
+
 
         void SetInput(IIOPort* p)
         {
+            m_mapInput[p->Name()] = p;
+            Log() <<"StartZmqSvr SetInput: " << p->Name() << ", 0x" << std::hex << p << "\n";
         }
+
+    private:
+        std::map<std::string, IIOPort*> m_mapInput;
 };
 
 class FlashSoc
@@ -471,20 +497,20 @@ class FlashSoc
     public:
         uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
         {
-            std::cout << "Run class FlashSoc begin, output size:" << mapOutput.size() << "\n";
+            Log() <<"Run class FlashSoc begin, output size:" << mapOutput.size() << "\n";
             IIOPort* pOutput = mapOutput["nSocProgress"];
             for(uint32_t i = 1; i <= 100; ++i)
             {
                 pOutput->SetData(&i, sizeof(i));
                 usleep(1000 * 100);
             }
-            std::cout << "Run class FlashSoc end\n";
+            Log() <<"Run class FlashSoc end\n";
             return 0;
         }
 
         void SetInput(IIOPort* p)
         {
-            std::cout << "SetInput:" << std::hex << p << "\n";
+            Log() <<"SetInput:" << std::hex << p << "\n";
         }
 };
 
@@ -493,20 +519,20 @@ class FlashMcu
     public:
         uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
         {
-            std::cout << "Run class FlashMcu begin, output size:" << mapOutput.size() << "\n";
+            Log() <<"Run class FlashMcu begin, output size:" << mapOutput.size() << "\n";
             IIOPort* pOutput = mapOutput["nMcuProgress"];
             for(int i = 1; i <= 100; ++i)
             {
                 pOutput->SetData(&i, sizeof(i));
                 usleep(1000 * 100);
             }
-            std::cout << "Run class FlashMcu end\n";
+            Log() <<"Run class FlashMcu end\n";
             return 0;
         }
 
         void SetInput(IIOPort* p)
         {
-            std::cout << "SetInput: 0x" << std::hex << p << "\n";
+            Log() <<"SetInput: 0x" << std::hex << p << "\n";
         }
 };
 
@@ -596,27 +622,36 @@ void test_module()
     TModule<StartZmqSvr>       modStartZmqSvr;
     TModule<ChkActState>       modChkActState;
     TModule<ChkOtaEvt, true>   modChkOtaEvt;
-    TModule<Flash>             modFlash;
-    TModule<Activate>          modActivate;
-    TModule<EndFlash, true>    modEndFlash;
-    TModule<EndAct, true>      modEndAct;
+    TModule<Flash, true>             modFlash;
+    TModule<Activate, true>          modActivate;
+    //TModule<EndFlash, true>    modEndFlash;
+    //TModule<EndAct, true>      modEndAct;
     TModule<Reboot>            modReboot;
     TModule<FlashSoc>          modFlashSoc;
     TModule<FlashMcu>          modFlashMcu;
 
     TIOData<uint32_t, IOPort>     socProgress("nSocProgress", 0);
     TIOData<uint32_t, IOPort>     mcuProgress("nMcuProgress", 0);
+    TIOData<uint32_t, IOPort>     flashProgress("nFlashProgress", 0);
 
     // io flow
-    socProgress.OutputOf(&modFlashSoc).InputOf(&modStartZmqSvr);
-    mcuProgress.OutputOf(&modFlashMcu).InputOf(&modStartZmqSvr);
+    //socProgress.OutputOf(&modFlashSoc).InputOf(&modStartZmqSvr);
+    //mcuProgress.OutputOf(&modFlashMcu).InputOf(&modStartZmqSvr);
+
+    socProgress.OutputOf(&modFlashSoc).InputOf(&modFlash);
+    mcuProgress.OutputOf(&modFlashMcu).InputOf(&modFlash);
+    flashProgress.OutputOf(&modFlash).InputOf(&modStartZmqSvr);
 
     // module flow
     modInitGlobal.Before({&modStartZmqSvr, &modChkActState});
     modChkActState >> &modChkOtaEvt.Before({&modFlash, &modActivate});
-    modActivate >> &modEndAct.Before({&modReboot, &modChkOtaEvt});
-    modFlash >> &modEndFlash >> &modChkOtaEvt;
+    //modActivate >> &modEndAct.Before({&modReboot, &modChkOtaEvt});
+    modActivate.Before({&modReboot, &modChkOtaEvt});
+    //modFlash >> &modEndFlash >> &modChkOtaEvt;
+    modFlash >> &modChkOtaEvt;
     modFlash.After({&modFlashSoc, &modFlashMcu});
+    //modFlashSoc >> &modFlash;
+    //modFlashMcu >> &modFlash;
 
     modStartZmqSvr.SetPriority(TaskPrio::HI);
 
@@ -627,7 +662,7 @@ void test_module()
 
 template<typename T>
 void printValue(T value) {
-    std::cout << "传入的值是：" << value << std::endl;
+    Log() <<"传入的值是：" << value << std::endl;
 }
 
 int main() {
@@ -655,7 +690,7 @@ int main() {
     // wait until the cancellation finishes
     fu.get();
 
-    taskflow.dump(std::cout);
+    taskflow.dump(Log);
     */
     return 0;
 }
