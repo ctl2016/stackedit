@@ -54,9 +54,7 @@ enum TaskPrio
     LO = 2,
 };
 
-class IOPort;
-
-class IIOPort
+class IIOData
 {
     public:
         virtual std::string Name() = 0;
@@ -67,8 +65,8 @@ class IIOPort
 class ITaskIO
 {
     public:
-        virtual IIOPort* Get(const std::string& strName) = 0;
-        virtual void Set(const std::string& strName, IIOPort* pPort) = 0;
+        virtual IIOData* Get(const std::string& strName) = 0;
+        virtual void Set(const std::string& strName, IIOData* pPort) = 0;
 };
 
 class TaskIO : public ITaskIO
@@ -79,7 +77,7 @@ class TaskIO : public ITaskIO
             return io;
         }
 
-        IIOPort* Get(const std::string& strName) override
+        IIOData* Get(const std::string& strName) override
         {
             auto it = m_mapIOPort.find(strName);
 
@@ -91,13 +89,13 @@ class TaskIO : public ITaskIO
             return nullptr;
         }
 
-        void Set(const std::string& strName, IIOPort* pPort) override
+        void Set(const std::string& strName, IIOData* pPort) override
         {
             m_mapIOPort[strName] = pPort;
         }
 
     private:
-        std::map<std::string, IIOPort*> m_mapIOPort;
+        std::map<std::string, IIOData*> m_mapIOPort;
 };
 
 class TaskModule
@@ -109,8 +107,8 @@ class TaskModule
 
         virtual const std::string Name() const = 0;
         virtual bool IsCondition() const = 0;
-        virtual void SetInput(IOPort* p) = 0;
-        virtual void SetOutput(IOPort* p) = 0;
+        virtual void SetInput(IIOData* p) = 0;
+        virtual void SetOutput(IIOData* p) = 0;
         virtual uint32_t Run() = 0;
 
         void SetPriority(TaskPrio prio)
@@ -192,25 +190,25 @@ class TModule : public TaskModule
             return m_Runner.Run(m_mapOutput);
         }
 
-        void SetInput(IOPort* p)
+        void SetInput(IIOData* p)
         {
             if(nullptr != p)
             {
-                m_Runner.SetInput((IIOPort*)p);
+                m_Runner.SetInput(p);
             }
         }
 
-        void SetOutput(IOPort* p)
+        void SetOutput(IIOData* p)
         {
             if(nullptr != p)
             {
-                m_mapOutput[((IIOPort*)p)->Name()] = (IIOPort*)p;
+                m_mapOutput[p->Name()] = p;
             }
         }
 
     private:
         TRunner m_Runner;
-        std::map<std::string, IIOPort*> m_mapOutput;
+        std::map<std::string, IIOData*> m_mapOutput;
 };
 
 class TaskExecutor
@@ -351,13 +349,13 @@ class TaskExecutor
 class InitGlobal
 {
     public:
-        uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
+        uint32_t Run(std::map<std::string, IIOData*>& mapOutput)
         {
             //Log() <<"Run class output size:" << mapOutput.size() << "\n";
             return 0;
         }
 
-        void SetInput(IIOPort* p)
+        void SetInput(IIOData* p)
         {
             Log() <<"SetInput: 0x" << std::hex << p << "\n";
         }
@@ -366,7 +364,7 @@ class InitGlobal
 class StartZmqSvr
 {
     public:
-        uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
+        uint32_t Run(std::map<std::string, IIOData*>& mapOutput)
         {
             Log() <<"StartZmqSvr Run begin\n";
 
@@ -385,26 +383,26 @@ class StartZmqSvr
         }
 
 
-        void SetInput(IIOPort* p)
+        void SetInput(IIOData* p)
         {
             m_mapInput[p->Name()] = p;
             Log() <<"StartZmqSvr SetInput: " << p->Name() << ", 0x" << std::hex << p << "\n";
         }
 
     private:
-        std::map<std::string, IIOPort*> m_mapInput;
+        std::map<std::string, IIOData*> m_mapInput;
 };
 
 class ChkActState
 {
     public:
-        uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
+        uint32_t Run(std::map<std::string, IIOData*>& mapOutput)
         {
             Log() <<"Run class ChkActState output size:" << mapOutput.size() << "\n";
             return 0;
         }
 
-        void SetInput(IIOPort* p)
+        void SetInput(IIOData* p)
         {
             Log() <<"SetInput: 0x" << std::hex << p << "\n";
         }
@@ -413,13 +411,13 @@ class ChkActState
 class ChkOtaEvt
 {
     public:
-        uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
+        uint32_t Run(std::map<std::string, IIOData*>& mapOutput)
         {
             Log() <<"Run class ChkOtaEvt output size:" << mapOutput.size() << "\n";
             return 0;
         }
 
-        void SetInput(IIOPort* p)
+        void SetInput(IIOData* p)
         {
             Log() <<"SetInput: 0x" << std::hex << p << "\n";
         }
@@ -428,13 +426,13 @@ class ChkOtaEvt
 class Activate
 {
     public:
-        uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
+        uint32_t Run(std::map<std::string, IIOData*>& mapOutput)
         {
             Log() <<"Run class Activate output size:" << mapOutput.size() << "\n";
             return 0;
         }
 
-        void SetInput(IIOPort* p)
+        void SetInput(IIOData* p)
         {
             Log() <<"SetInput: 0x" << std::hex << p << "\n";
         }
@@ -443,13 +441,13 @@ class Activate
 class Reboot
 {
     public:
-        uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
+        uint32_t Run(std::map<std::string, IIOData*>& mapOutput)
         {
             //Log() <<"Run class output size:" << mapOutput.size() << "\n";
             return 0;
         }
 
-        void SetInput(IIOPort* p)
+        void SetInput(IIOData* p)
         {
             //Log() <<"SetInput: 0x" << std::hex << p << "\n";
         }
@@ -458,7 +456,7 @@ class Reboot
 class Flash
 {
     public:
-        uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
+        uint32_t Run(std::map<std::string, IIOData*>& mapOutput)
         {
             Log() <<"Flash Run start\n";
 
@@ -469,7 +467,7 @@ class Flash
                 m_mapInput["nSocProgress"]->GetData(&nSocProgress, sizeof(nSocProgress));
                 m_mapInput["nMcuProgress"]->GetData(&nMcuProgress, sizeof(nMcuProgress));
                 Log() <<"    Flash Run nSocProgress:" << std::dec << nSocProgress << ", nMcuProgress: " << nMcuProgress << "\n";
-                IIOPort* pOutput = mapOutput["nFlashProgress"];
+                IIOData* pOutput = mapOutput["nFlashProgress"];
                 pOutput->SetData(&nSocProgress, sizeof(nSocProgress));
 
                 if(nSocProgress >= 100 && nMcuProgress >= 100) break;
@@ -482,23 +480,23 @@ class Flash
         }
 
 
-        void SetInput(IIOPort* p)
+        void SetInput(IIOData* p)
         {
             m_mapInput[p->Name()] = p;
             Log() <<"StartZmqSvr SetInput: " << p->Name() << ", 0x" << std::hex << p << "\n";
         }
 
     private:
-        std::map<std::string, IIOPort*> m_mapInput;
+        std::map<std::string, IIOData*> m_mapInput;
 };
 
 class FlashSoc
 {
     public:
-        uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
+        uint32_t Run(std::map<std::string, IIOData*>& mapOutput)
         {
             Log() <<"Run class FlashSoc begin, output size:" << mapOutput.size() << "\n";
-            IIOPort* pOutput = mapOutput["nSocProgress"];
+            IIOData* pOutput = mapOutput["nSocProgress"];
             for(uint32_t i = 1; i <= 100; ++i)
             {
                 pOutput->SetData(&i, sizeof(i));
@@ -508,7 +506,7 @@ class FlashSoc
             return 0;
         }
 
-        void SetInput(IIOPort* p)
+        void SetInput(IIOData* p)
         {
             Log() <<"SetInput:" << std::hex << p << "\n";
         }
@@ -517,10 +515,10 @@ class FlashSoc
 class FlashMcu
 {
     public:
-        uint32_t Run(std::map<std::string, IIOPort*>& mapOutput)
+        uint32_t Run(std::map<std::string, IIOData*>& mapOutput)
         {
             Log() <<"Run class FlashMcu begin, output size:" << mapOutput.size() << "\n";
-            IIOPort* pOutput = mapOutput["nMcuProgress"];
+            IIOData* pOutput = mapOutput["nMcuProgress"];
             for(int i = 1; i <= 100; ++i)
             {
                 pOutput->SetData(&i, sizeof(i));
@@ -530,57 +528,81 @@ class FlashMcu
             return 0;
         }
 
-        void SetInput(IIOPort* p)
+        void SetInput(IIOData* p)
         {
             Log() <<"SetInput: 0x" << std::hex << p << "\n";
         }
 };
 
-class IOPort : IIOPort
+template<typename DataType>
+class TIOPort
 {
     public:
-
-        IOPort& InputOf (TaskModule* pMod)
-        {
-            pMod->SetInput(this);
-            return *this;
-        }
-
-        IOPort& OutputOf (TaskModule* pMod)
-        {
-            pMod->SetOutput(this);
-            return *this;
-        }
-
-    protected:
-
-        virtual std::string Name() override
-        {
-            return "";
-        }
-
-        virtual bool GetData(void* pDataBuf, uint32_t nBufSize) override
+        virtual bool GetIOPortData(DataType& data)
         {
             return false;
         }
 
-        virtual bool SetData(void* pData, uint32_t nDataSize) override
+        virtual bool SetIOPortData(const DataType& data)
         {
             return false;
         }
 };
 
-template<typename DataType, typename Base>
-class TIOData : public Base
+template<typename DataType>
+class TIOPortAtomic : public TIOPort<DataType>
 {
     public:
-        TIOData(const std::string& strName, const DataType& defVal) : 
-            m_strName(strName),
-            m_data(defVal)
+        bool GetIOPortData(DataType& data) override
         {
+            data = m_data.load(std::memory_order_relaxed);
+            return true;
+        }
+
+        bool SetIOPortData(const DataType& data) override
+        {
+            m_data.store(data, std::memory_order_relaxed);
+            return true;
         }
 
     protected:
+        std::atomic<DataType> m_data;
+};
+
+class IOPortString : public TIOPort<std::string>
+{
+    public:
+        bool GetIOPortData(std::string& data) override
+        {
+            return false;
+        }
+
+        bool SetIOPortData(const std::string& data) override
+        {
+            return false;
+        }
+};
+
+template<typename ClassIOPort, typename DataType>
+class TIOData : public IIOData
+{
+    public:
+        TIOData(const std::string& strName, const DataType& defVal) : m_strName(strName)
+        {
+            m_IOPort.SetIOPortData(defVal);
+        }
+
+        TIOData& InputOf (TaskModule* pMod)
+        {
+            pMod->SetInput(this);
+            return *this;
+        }
+
+        TIOData& OutputOf (TaskModule* pMod)
+        {
+            pMod->SetOutput(this);
+            return *this;
+        }
 
         std::string Name() override
         {
@@ -591,7 +613,8 @@ class TIOData : public Base
         {
             if(nBufSize == sizeof(DataType))
             {
-                DataType data = m_data.load();
+                DataType data {};
+                m_IOPort.GetIOPortData(data);
                 memcpy(pDataBuf, &data, sizeof(data));
                 return true;
             }
@@ -603,8 +626,9 @@ class TIOData : public Base
         {
             if(sizeof(DataType) == nDataSize)
             {
-                m_data.store(*((DataType*)pData));
-                IOPort::SetData(pData, nDataSize);
+                DataType data {};
+                memcpy(&data, pData, sizeof(data));
+                m_IOPort.SetIOPortData(data);
                 return true;
             }
 
@@ -612,8 +636,8 @@ class TIOData : public Base
         }
 
     protected:
-        std::atomic<DataType> m_data;
         std::string m_strName;
+        ClassIOPort m_IOPort;
 };
 
 void test_module()
@@ -630,9 +654,9 @@ void test_module()
     TModule<FlashSoc>          modFlashSoc;
     TModule<FlashMcu>          modFlashMcu;
 
-    TIOData<uint32_t, IOPort>     socProgress("nSocProgress", 0);
-    TIOData<uint32_t, IOPort>     mcuProgress("nMcuProgress", 0);
-    TIOData<uint32_t, IOPort>     flashProgress("nFlashProgress", 0);
+    TIOData<TIOPortAtomic<uint32_t>, uint32_t>     socProgress("nSocProgress", 0);
+    TIOData<TIOPortAtomic<uint32_t>, uint32_t>     mcuProgress("nMcuProgress", 0);
+    TIOData<TIOPortAtomic<uint32_t>, uint32_t>     flashProgress("nFlashProgress", 0);
 
     // io flow
     //socProgress.OutputOf(&modFlashSoc).InputOf(&modStartZmqSvr);
