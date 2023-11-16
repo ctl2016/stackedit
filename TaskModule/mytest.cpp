@@ -124,27 +124,46 @@ class TaskModule
         TaskModule& operator >> (TaskModule* task)
         {
             //Log() <<"TaskModule: " << Name() << " >> " << task->Name() << "\n";
-            m_lstNext.push_back(task);
+            if(task != nullptr)
+            {
+                m_lstNext.push_back(task);
+                task->GetPrevList().push_back(this);
+            }
+
             return *task;
         }
 
-        TaskModule& Before(const std::initializer_list<TaskModule*>& tasks)
+        TaskModule& Before(const std::initializer_list<TaskModule*>& nextTasks)
         {
-            for (auto& t : tasks)
-            {
-                //Log() <<"TaskModule: " << Name() << " Before >> " << t->Name() << "\n";
-                m_lstNext.push_back(t);
-            }
+            std::for_each(nextTasks.begin(), nextTasks.end(), [&](auto& t){
+                    m_lstNext.push_back(t);
+                    t->GetPrevList().push_back(this);
+                    Log() << Name() << " Before " << t->Name() << "\n";
+            });
 
             return *this;
         }
 
-        TaskModule& After(const std::initializer_list<TaskModule*>& tasks)
+        TaskModule& After(const std::initializer_list<TaskModule*>& prevTasks)
         {
-            for (auto& t : tasks)
+            std::for_each(prevTasks.begin(), prevTasks.end(), [&](auto& t){
+                    m_lstPrev.push_back(t);
+                    t->GetNextList().push_back(this);
+                    Log() << Name() << " After " << t->Name() << "\n";
+            });
+
+            return *this;
+        }
+
+        TaskModule& SubModule(const std::initializer_list<TaskModule*>& tasks, bool bAsync)
+        {
+            if(bAsync)
             {
-                //Log() <<"TaskModule: " << Name() << " Before >> " << t->Name() << "\n";
-                m_lstPrev.push_back(t);
+                m_lstSubAsync.insert(m_lstSubAsync.end(), tasks.begin(), tasks.end());
+            }
+            else
+            {
+                m_lstSubSync.insert(m_lstSubAsync.end(), tasks.begin(), tasks.end());
             }
 
             return *this;
@@ -164,6 +183,8 @@ class TaskModule
         TaskPrio m_priority;
         std::list<TaskModule*> m_lstNext;
         std::list<TaskModule*> m_lstPrev;
+        std::list<TaskModule*> m_lstSubAsync;
+        std::list<TaskModule*> m_lstSubSync;
 };
 
 template<typename TRunner, bool bIsCondition = false>
@@ -218,7 +239,9 @@ class TaskExecutor
     {
         for (auto& t : tasks)
         {
+            std::set<std::string> setRelation;
             std::set<TaskModule*> visited;
+
             Traverse(t, visited, [&](TaskModule* pCur, TaskModule* pPrev, TaskModule* pNext) {
                     tf::Task* prev = nullptr;
                     tf::Task* next = nullptr;
@@ -226,19 +249,27 @@ class TaskExecutor
 
                     if(nullptr == curr)
                     {
-                    curr = AddTask(pCur);
+                        curr = AddTask(pCur);
                     }
 
                     if(pPrev != nullptr)
                     {
-                    prev = SearchTask(pPrev);
+                        prev = SearchTask(pPrev);
 
-                    if(nullptr == prev)
-                    {
-                    prev = AddTask(pPrev);
-                    }
+                        if(nullptr == prev)
+                        {
+                            prev = AddTask(pPrev);
+                        }
 
-                    (*curr).succeed(*prev);
+                        std::stringstream ss;
+                        ss << prev->name() << "->" << curr->name();
+
+                        if(setRelation.count(ss.str()) == 0)
+                        {
+                            (*curr).succeed(*prev);
+                            setRelation.insert(ss.str());
+                            Log() << "succeed: " << ss.str() << "\n";
+                        }
                     }
 
                     if(pNext != nullptr)
@@ -250,7 +281,15 @@ class TaskExecutor
                             next = AddTask(pNext);
                         }
 
-                        (*curr).precede(*next);
+                        std::stringstream ss;
+                        ss << curr->name() << "->" << next->name();
+
+                        if(setRelation.count(ss.str()) == 0)
+                        {
+                            (*curr).precede(*next);
+                            setRelation.insert(ss.str());
+                            Log() << "precede: " << ss.str() << "\n";
+                        }
                     }
 
                     //Log() <<(pPrev ? pPrev->Name():"")<< " < " << pCurr->Name() << " > " << (pNext ? pNext->Name():"")<< std::endl;
@@ -267,6 +306,7 @@ class TaskExecutor
 
             tf::Executor executor(nWorkers);
             executor.run(m_taskflow).get();
+            std::cout << "\n";
             m_taskflow.dump(std::cout);
         }
 
@@ -312,7 +352,7 @@ class TaskExecutor
             return curr;
         }
 
-        template <typename Callable>
+            template <typename Callable>
             void Traverse(TaskModule* pMod, std::set<TaskModule*>& visited, Callable C)
             {
                 if (visited.count(pMod) > 0 || pMod == nullptr)
@@ -320,24 +360,26 @@ class TaskExecutor
 
                 visited.insert(pMod);
 
-                if(pMod->GetPrevList().empty() &&pMod->GetNextList().empty())
+                if(pMod->GetPrevList().empty() && pMod->GetNextList().empty())
                 {
                     C(pMod, nullptr, nullptr);
                     return;
                 }
 
-                // prev list
-                for (auto& prev : pMod->GetPrevList())
-                {
-                    C(pMod, prev, nullptr);
-                    Traverse(prev, visited, C);
-                }
-
                 // next list
+
                 for (auto& next : pMod->GetNextList())
                 {
                     C(pMod, nullptr, next);
                     Traverse(next, visited, C);
+                }
+
+                // prev list
+
+                for (auto& prev : pMod->GetPrevList())
+                {
+                    C(pMod, prev, nullptr);
+                    Traverse(prev, visited, C);
                 }
             }
 
@@ -429,7 +471,7 @@ class Activate
         uint32_t Run(std::map<std::string, IIOData*>& mapOutput)
         {
             Log() <<"Run class Activate output size:" << mapOutput.size() << "\n";
-            return 0;
+            return 1;
         }
 
         void SetInput(IIOData* p)
@@ -659,9 +701,6 @@ void test_module()
     TIOData<TIOPortAtomic<uint32_t>, uint32_t>     flashProgress("nFlashProgress", 0);
 
     // io flow
-    //socProgress.OutputOf(&modFlashSoc).InputOf(&modStartZmqSvr);
-    //mcuProgress.OutputOf(&modFlashMcu).InputOf(&modStartZmqSvr);
-
     socProgress.OutputOf(&modFlashSoc).InputOf(&modFlash);
     mcuProgress.OutputOf(&modFlashMcu).InputOf(&modFlash);
     flashProgress.OutputOf(&modFlash).InputOf(&modStartZmqSvr);
@@ -669,10 +708,9 @@ void test_module()
     // module flow
     modInitGlobal.Before({&modStartZmqSvr, &modChkActState});
     modChkActState >> &modChkOtaEvt.Before({&modFlash, &modActivate});
-    //modActivate >> &modEndAct.Before({&modReboot, &modChkOtaEvt});
     modActivate.Before({&modReboot, &modChkOtaEvt});
-    //modFlash >> &modEndFlash >> &modChkOtaEvt;
     modFlash >> &modChkOtaEvt;
+    //modFlash.SubModule({&modFlashSoc, &modFlashMcu}, true);
     modFlash.After({&modFlashSoc, &modFlashMcu});
     //modFlashSoc >> &modFlash;
     //modFlashMcu >> &modFlash;
@@ -680,42 +718,12 @@ void test_module()
     modStartZmqSvr.SetPriority(TaskPrio::HI);
 
     TaskExecutor exec("OTA", { &modInitGlobal });
-
+    //TaskExecutor exec("OTA", { &modFlash });
     exec.Run();
 }
 
-template<typename T>
-void printValue(T value) {
-    Log() <<"传入的值是：" << value << std::endl;
-}
-
 int main() {
-    //printValue(5);
     test_module();
-    /*
-       tf::Executor executor(5);
-       tf::Taskflow taskflow("test");
-
-       printf("threads: %d\n", executor.num_workers());
-
-       for(int i=0; i<5; i++) {
-       taskflow.emplace([=](){
-       printf("thread:%ld\n", pthread_self());
-       std::this_thread::sleep_for(std::chrono::seconds(i));
-       });
-       }
-
-    // submit the taskflow
-    tf::Future fu = executor.run(taskflow);
-
-    // request to cancel the submitted execution above
-    //fu.cancel();
-
-    // wait until the cancellation finishes
-    fu.get();
-
-    taskflow.dump(Log);
-    */
     return 0;
 }
 
