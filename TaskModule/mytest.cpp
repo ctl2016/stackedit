@@ -101,7 +101,7 @@ class TaskIO : public ITaskIO
 class TaskModule
 {
     public:
-        TaskModule() : m_priority(TaskPrio::NO)
+        TaskModule() : m_priority(TaskPrio::NO), m_bSubAsync(true)
     {
     }
 
@@ -157,13 +157,13 @@ class TaskModule
 
         TaskModule& SubModule(const std::initializer_list<TaskModule*>& tasks, bool bAsync)
         {
-            if(bAsync)
+            m_bSubAsync = bAsync;
+            m_lstSub.insert(m_lstSub.end(), tasks.begin(), tasks.end());
+
+            if(!m_lstSub.empty())
             {
-                m_lstSubAsync.insert(m_lstSubAsync.end(), tasks.begin(), tasks.end());
-            }
-            else
-            {
-                m_lstSubSync.insert(m_lstSubAsync.end(), tasks.begin(), tasks.end());
+                // module which has submodules can't be condition
+                assert(!IsCondition());
             }
 
             return *this;
@@ -179,12 +179,22 @@ class TaskModule
             return m_lstPrev;
         }
 
+        std::list<TaskModule*>& GetSubList()
+        {
+            return m_lstSub;
+        }
+
+        bool IsSubModuleAsync()
+        {
+            return m_bSubAsync;
+        }
+
     protected:
         TaskPrio m_priority;
+        bool m_bSubAsync;
         std::list<TaskModule*> m_lstNext;
         std::list<TaskModule*> m_lstPrev;
-        std::list<TaskModule*> m_lstSubAsync;
-        std::list<TaskModule*> m_lstSubSync;
+        std::list<TaskModule*> m_lstSub;
 };
 
 template<typename TRunner, bool bIsCondition = false>
@@ -322,6 +332,41 @@ class TaskExecutor
             return nullptr;
         }
 
+        tf::Task AddSubTask(TaskModule* pMod)
+        {
+            return m_taskflow.emplace([=](tf::Subflow& sf) {
+
+                    std::list<TaskModule*>& lstSub = pMod->GetSubList();
+
+                    if(pMod->IsSubModuleAsync())
+                    {
+                        // when detach create another subflow to hold tf::task
+                        // in order to view tasks group
+                        sf.emplace([=](tf::Subflow& ssf) {
+                            std::for_each(lstSub.begin(), lstSub.end(), [&](auto& t){
+                                    Log() << "add sub async:" << t->Name() << "\n";
+                                    //here need visit t's module tree to create tf::Task
+                                    ssf.emplace([=](){ t->Run(); }).name(t->Name());
+                                    });
+                            ssf.join();
+                            }).name(pMod->Name());
+
+                        sf.detach();
+                    }
+                    else
+                    {
+                        std::for_each(lstSub.begin(), lstSub.end(), [&](auto& t){
+                                Log() << "add sub sync:" << t->Name() << "\n";
+                                //here need visit t's module tree to create tf::Task
+                                sf.emplace([=](){ t->Run(); }).name(t->Name());
+                                });
+                        sf.join();
+                    }
+
+                    pMod->Run();
+            });
+        }
+
         tf::Task* AddTask(TaskModule* pMod)
         {
             if(pMod->IsCondition())
@@ -330,7 +375,16 @@ class TaskExecutor
             }
             else
             {
-                m_mapTasks[pMod] = m_taskflow.emplace([=]() { (void)pMod->Run(); });
+                std::list<TaskModule*>& lstSub = pMod->GetSubList();
+
+                if(!lstSub.empty())
+                {
+                    m_mapTasks[pMod] = AddSubTask(pMod);
+                }
+                else
+                {
+                    m_mapTasks[pMod] = m_taskflow.emplace([=]() { (void)pMod->Run(); });
+                }
             }
 
             tf::Task* curr = &m_mapTasks[pMod];
@@ -471,7 +525,7 @@ class Activate
         uint32_t Run(std::map<std::string, IIOData*>& mapOutput)
         {
             Log() <<"Run class Activate output size:" << mapOutput.size() << "\n";
-            return 1;
+            return 0;
         }
 
         void SetInput(IIOData* p)
@@ -532,6 +586,21 @@ class Flash
         std::map<std::string, IIOData*> m_mapInput;
 };
 
+class FlashEnd
+{
+    public:
+        uint32_t Run(std::map<std::string, IIOData*>& mapOutput)
+        {
+            Log() <<"Flash RunEnd start\n";
+            return 1;
+        }
+
+        void SetInput(IIOData* p)
+        {
+            //Log() <<"SetInput: 0x" << std::hex << p << "\n";
+        }
+};
+
 class FlashSoc
 {
     public:
@@ -539,7 +608,10 @@ class FlashSoc
         {
             Log() <<"Run class FlashSoc begin, output size:" << mapOutput.size() << "\n";
             IIOData* pOutput = mapOutput["nSocProgress"];
-            for(uint32_t i = 1; i <= 100; ++i)
+            uint32_t nSocProgress = 0;
+            pOutput->GetData(&nSocProgress, sizeof(nSocProgress));
+
+            for(uint32_t i = nSocProgress; i <= 100; ++i)
             {
                 pOutput->SetData(&i, sizeof(i));
                 usleep(1000 * 100);
@@ -561,7 +633,10 @@ class FlashMcu
         {
             Log() <<"Run class FlashMcu begin, output size:" << mapOutput.size() << "\n";
             IIOData* pOutput = mapOutput["nMcuProgress"];
-            for(int i = 1; i <= 100; ++i)
+            uint32_t nMcuProgress = 0;
+            pOutput->GetData(&nMcuProgress, sizeof(nMcuProgress));
+
+            for(int i = nMcuProgress; i <= 100; ++i)
             {
                 pOutput->SetData(&i, sizeof(i));
                 usleep(1000 * 100);
@@ -688,16 +763,15 @@ void test_module()
     TModule<StartZmqSvr>       modStartZmqSvr;
     TModule<ChkActState>       modChkActState;
     TModule<ChkOtaEvt, true>   modChkOtaEvt;
-    TModule<Flash, true>             modFlash;
-    TModule<Activate, true>          modActivate;
-    //TModule<EndFlash, true>    modEndFlash;
-    //TModule<EndAct, true>      modEndAct;
+    TModule<Flash>             modFlash;
+    TModule<FlashEnd, true>    modFlashEnd;
+    TModule<Activate, true>    modActivate;
     TModule<Reboot>            modReboot;
     TModule<FlashSoc>          modFlashSoc;
     TModule<FlashMcu>          modFlashMcu;
 
-    TIOData<TIOPortAtomic<uint32_t>, uint32_t>     socProgress("nSocProgress", 0);
-    TIOData<TIOPortAtomic<uint32_t>, uint32_t>     mcuProgress("nMcuProgress", 0);
+    TIOData<TIOPortAtomic<uint32_t>, uint32_t>     socProgress("nSocProgress", 80);
+    TIOData<TIOPortAtomic<uint32_t>, uint32_t>     mcuProgress("nMcuProgress", 90);
     TIOData<TIOPortAtomic<uint32_t>, uint32_t>     flashProgress("nFlashProgress", 0);
 
     // io flow
@@ -709,16 +783,13 @@ void test_module()
     modInitGlobal.Before({&modStartZmqSvr, &modChkActState});
     modChkActState >> &modChkOtaEvt.Before({&modFlash, &modActivate});
     modActivate.Before({&modReboot, &modChkOtaEvt});
-    modFlash >> &modChkOtaEvt;
-    //modFlash.SubModule({&modFlashSoc, &modFlashMcu}, true);
-    modFlash.After({&modFlashSoc, &modFlashMcu});
-    //modFlashSoc >> &modFlash;
-    //modFlashMcu >> &modFlash;
+    //modFlash.After({&modFlashSoc, &modFlashMcu});
+    modFlash.SubModule({&modFlashSoc, &modFlashMcu}, true);
+    modFlash >> &modFlashEnd >> &modChkOtaEvt;
 
     modStartZmqSvr.SetPriority(TaskPrio::HI);
 
     TaskExecutor exec("OTA", { &modInitGlobal });
-    //TaskExecutor exec("OTA", { &modFlash });
     exec.Run();
 }
 
