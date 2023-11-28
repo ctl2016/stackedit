@@ -1,0 +1,242 @@
+# docker file
+
+# Copyright (c) Jupyter Development Team.
+# Distributed under the terms of the Modified BSD License.
+ARG REGISTRY=quay.io
+ARG OWNER=jupyter
+ARG BASE_CONTAINER=$REGISTRY/$OWNER/scipy-notebook
+FROM $BASE_CONTAINER
+
+LABEL maintainer="Jupyter Project <jupyter@googlegroups.com>"
+
+# Fix: https://github.com/hadolint/hadolint/wiki/DL4006
+# Fix: https://github.com/koalaman/shellcheck/wiki/SC3014
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Install PyTorch with pip
+# hadolint ignore=DL3013
+
+RUN pip install --no-cache-dir --index-url 'https://pypi.tuna.tsinghua.edu.cn/simple/' \
+    'torch' \
+    'torchvision' \
+    'torchaudio'  && \
+    fix-permissions "${CONDA_DIR}" && \
+    fix-permissions "/home/${NB_USER}"
+
+
+# 模型训练
+
+import torch
+import torchvision
+import torchvision.transforms as transforms
+from torch import nn
+from torch import optim
+from IPython.display import clear_output
+import torch.nn.functional as F
+import matplotlib.pyplot as plt
+
+import sys
+
+# 定义变换
+transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize((0.5,), (0.5,))
+])
+
+# 加载 MNIST 数据集
+trainset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+testset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transform)
+
+trainloader = torch.utils.data.DataLoader(trainset, batch_size=32, shuffle=True)
+testloader = torch.utils.data.DataLoader(testset, batch_size=32, shuffle=False)
+
+def plot_loss(epoch, losses):
+    assert len(x_values) == len(loss_values), "x_values and loss_values must have the same length"
+    clear_output(wait=True)
+    plt.ion()  # 打开交互模式
+    fig, ax = plt.subplots()
+    # 清除之前的绘图
+    ax.clear()
+    plt.title('Training Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+
+    plt.plot(epoch, losses)
+
+    # 指定 x 轴坐标刻度
+    plt.xticks(epoch)
+    plt.draw()
+    plt.pause(0.001)
+    plt.ioff()  # 关闭交互模式
+    plt.show()
+
+class CNN(nn.Module):
+    def __init__(self):
+        super(CNN, self).__init__()
+        self.conv1 = nn.Conv2d(1, 28, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(28, 56, kernel_size=3, stride=1, padding=1)
+        self.fc1 = nn.Linear(7 * 7 * 56, 128)
+        self.fc2 = nn.Linear(128, 10)
+        #self.conv1.register_forward_hook(self.save_feature_map)
+        #self.conv2.register_forward_hook(self.save_feature_map)
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = F.max_pool2d(x, kernel_size=2, stride=2)
+        x = F.relu(self.conv2(x))
+        x = F.max_pool2d(x, kernel_size=2, stride=2)
+        x = x.view(x.size(0), -1)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
+    def save_feature_map(self, module, input, output):
+        # 处理特征图的函数
+        # 在这里可以对特征图进行任何你想要的操作，如可视化、保存等
+        clear_output(wait=True)
+        
+        feature_input = input[0].data
+        feature_output = output.data
+
+        batch_size = feature_input.size(0)
+        num_channels = feature_input.size(1)
+        height = feature_input.size(2)
+        width = feature_input.size(3)
+
+        batch_size2 = feature_output.size(0)
+        num_channels2 = feature_output.size(1)
+        height2 = feature_output.size(2)
+        width2 = feature_output.size(3)
+
+        print("batch_size1:", batch_size, "num_channels1:", num_channels, "height1:", height, "width1:", width)
+        print("batch_size2:", batch_size2, "num_channels2:", num_channels2, "height2:", height2, "width2:", width2)
+
+        fig, ax = plt.subplots()
+        ax.imshow(feature_output[0, 0].cpu().detach().numpy(), cmap='gray')
+        plt.show()
+    
+# 创建CNN模型实例
+model = CNN()
+
+# 加载模型权重
+model.load_state_dict(torch.load('my_model.pt'))
+
+# 定义损失函数和优化器
+#criterion = nn.CrossEntropyLoss()
+#optimizer = optim.Adam(model.parameters())
+
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.SGD(model.parameters(), lr=0.01)
+
+# 训练模型
+
+epoches = []
+losses = []
+
+for epoch in range(10):
+    running_loss = 0.0
+    for images, labels in trainloader:
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+        running_loss += loss.item()
+
+    losses.append(running_loss / len(trainloader))
+    epoches.append(epoch)
+    plot_loss(epoches, losses)
+    print(f"Epoch {epoch+1}, loss: {running_loss / len(trainloader)}")
+
+# 评估模型
+correct = 0
+total = 0
+with torch.no_grad():
+    for images, labels in testloader:
+        outputs = model(images)
+        _, predicted = torch.max(outputs.data, 1)
+        total += labels.size(0)
+        correct += (predicted == labels).sum().item()
+
+print('Test accuracy: %.2f%%' % (100 * correct / total))
+
+# 保存模型
+torch.save(model.state_dict(), 'my_model.pt')
+
+
+
+# 推理
+
+import torch
+import torch.nn as nn
+from torchvision.transforms import ToTensor
+from PIL import Image
+import matplotlib.pyplot as plt
+
+class CNN(nn.Module):
+    def __init__(self):
+        super(CNN, self).__init__()
+        self.conv1 = nn.Conv2d(1, 28, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(28, 56, kernel_size=3, stride=1, padding=1)
+        self.fc1 = nn.Linear(7 * 7 * 56, 128)
+        self.fc2 = nn.Linear(128, 10)
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = F.max_pool2d(x, kernel_size=2, stride=2)
+        x = F.relu(self.conv2(x))
+        x = F.max_pool2d(x, kernel_size=2, stride=2)
+        x = x.view(x.size(0), -1)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
+
+# 实例化模型类
+model = CNN()
+
+# 加载模型权重
+model.load_state_dict(torch.load('my_model.pt'))
+
+# 设置为推理模式
+model.eval()
+
+# 加载并预处理图像（假设要进行推理的图像为sample_image.jpg）
+image = Image.open('9-1.png')
+
+#testset = torchvision.datasets.MNIST(root='./data', train=True, download=True)
+#testset = torchvision.datasets.MNIST(root='./data', train=False, download=False)
+#image = testset[120][0]
+#image.save("5s.png")
+# 显示图像
+
+plt.figure(figsize=(2,2))
+plt.imshow(image)
+plt.axis('on')  # 可选：关闭坐标轴
+plt.show()
+
+transform = transforms.Compose([
+    transforms.Resize((28, 28)),
+    transforms.ToTensor(),
+    transforms.Normalize((0.5,), (0.5,))
+])
+
+# 可选：将图像转换为灰度图像
+image = image.convert('L')
+
+image = transform(image).unsqueeze(0)  # 转换为张量并添加批次维度
+
+
+# 进行推理
+with torch.no_grad():
+    output = model(image)
+
+# 处理输出结果
+_, predicted = torch.max(output.data, 1)
+print('Predicted label:', predicted.item())
+#print('predicted', output.data)
+
+plt.figure(figsize=(2,2))
+plt.imshow(image.view(28,28).numpy(), cmap='gray')
+plt.axis('on')
+plt.show()
