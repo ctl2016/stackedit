@@ -3,10 +3,13 @@ from torch import nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from IPython.display import clear_output
+import torchvision
 import sys
 
-def plot_loss(epoch, losses):
-    clear_output(wait=True)
+def plot_loss(epoch, losses, clear=False):
+    if clear:
+        clear_output(wait=True)
+    #plt.figure(figsize=(1024/100, 256/100), dpi=100)
     plt.ion()  # 打开交互模式
     fig, ax = plt.subplots()
     # 清除之前的绘图
@@ -24,23 +27,20 @@ def plot_loss(epoch, losses):
     plt.ioff()  # 关闭交互模式
     plt.show()
 
-def plot_pool(x):
-    clear_output(wait=True)
-    print('pool shape:', x.shape)
-    w = x.size(3)  # 获取宽度
-    h = x.size(2)  # 获取高度
-    fig, axes = plt.subplots(nrows=1, ncols=5, figsize=(w, h))
+def show_pool_img(img):
+    # 显示图像
+    to_pil = torchvision.transforms.ToPILImage()
+    num_channels = min(15, img.shape[1])  # 图像的通道数 
+    width = img.shape[2]  # 图像的通道数
+    fig, axs = plt.subplots(1, num_channels, figsize=(width, width))
 
-    # 逐个样本处理和显示特征图
-    for i, ax in enumerate(axes):
-        # 将张量转换为图像
-        output_image = x[i].detach().squeeze().numpy()
-        # 显示图像
-        ax.imshow(output_image)
-        ax.axis('off')  # 关闭坐标轴
-
-    # 调整子图之间的间距并显示图像
-    plt.tight_layout()
+    for i in range(num_channels):
+        channel_image = img[:, i, :, :]
+        ax = axs[i]
+        ax.imshow(channel_image.squeeze().detach().numpy(), cmap='gray')
+        ax.set_xlim([0, width])
+        ax.set_ylim([width, 0])
+        ax.axis('off')
     plt.show()
 
 class CNNA(nn.Module):
@@ -107,21 +107,31 @@ class CNNA(nn.Module):
 class CNNB(nn.Module):
     def __init__(self):
         super(CNNB, self).__init__()
-        self.conv1 = nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=1)
         self.relu = nn.ReLU()
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)
-        self.fc = nn.Linear(32 * 7 * 7, 10)
+
+        self.conv1 = nn.Conv2d(1, 16, kernel_size=2, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=2, stride=1, padding=1)
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=2, stride=1, padding=1)
+
+        #self.bn1 = nn.BatchNorm2d(32)
+        #self.bn2 = nn.BatchNorm2d(64)
+
+        self.pool1 = nn.MaxPool2d(kernel_size=8, stride=1)
+        self.pool2 = nn.MaxPool2d(kernel_size=4, stride=1)
+        self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        self.fc1 = nn.Linear(64 * 10 * 10, 256)
+        self.fc2 = nn.Linear(256, 10)
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.relu(x)
-        x = self.pool(x)
-        x = self.conv2(x)
-        x = self.relu(x)
-        x = self.pool(x)
+        x = self.pool1(self.relu(self.conv1(x)))
+        x = self.pool2(self.relu(self.conv2(x)))
+        x = self.pool3(self.relu(self.conv3(x)))
+        #print('x.shape1:', x.shape)
+        #print('x.shape2:', x.shape)
         x = x.view(x.size(0), -1)
-        x = self.fc(x)
+        x = self.fc1(x)
+        x = self.fc2(x)
         return x
 
     def save_name(self):
