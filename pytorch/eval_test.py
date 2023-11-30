@@ -6,6 +6,7 @@ from torchvision.transforms import ToTensor
 from PIL import Image
 import matplotlib.pyplot as plt
 import utils
+from torchvision import transforms
 
 # 实例化模型类
 model = utils.CNNB()
