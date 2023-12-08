@@ -4,12 +4,14 @@
 #include <thread>
 #include <taskflow/taskflow.hpp>
 #include <unordered_map>
-
+#include <algorithm>
 #include <initializer_list>
 #include <cstdarg>
 #include <list>
 #include <sstream>
 #include <typeinfo>
+#include <assert.h>
+#include <any>
 
 class Log final
 {
@@ -58,52 +60,47 @@ class IIOData
 {
     public:
         virtual std::string Name() = 0;
-        virtual bool GetData(void* pDataBuf, uint32_t nBufSize) = 0;
-        virtual bool SetData(const void* pData, uint32_t nDataSize) = 0;
+        virtual bool GetData(std::any& data) = 0;
+        virtual bool SetData(const std::any& data) = 0;
 };
 
-class IModuleIO
+class ModuleIO
 {
     public:
-        virtual bool SetOutput(const std::string& strName, const void* pData, uint32_t nSize) = 0;
-        virtual bool GetOutput(const std::string& strName, void* pData, uint32_t nSize) = 0;
-        virtual bool GetInput(const std::string& strName, void* pData, uint32_t nSize) = 0;
-};
-
-class ModuleIO : public IModuleIO
-{
-    public:
-        bool SetOutput(const std::string& strName, const void* pData, uint32_t nSize)
+        template<typename T>
+        bool SetOutput(const std::string& strName, T data)
         {
             IIOData* pIO = GetIOData(strName, false);
 
             if(nullptr != pIO)
             {
-                return pIO->SetData(pData, nSize);
+                return pIO->SetData(data);
             }
 
             return false;
         }
 
-        bool GetOutput(const std::string& strName, void* pData, uint32_t nSize)
+        template<typename T>
+        bool GetOutput(const std::string& strName, T& data)
         {
             IIOData* pIO = GetIOData(strName, false);
             
             if(nullptr != pIO)
             {
-                return pIO->GetData(pData, nSize);
+                return pIO->GetData(data);
             }
 
             return false;
         }
 
-        bool GetInput(const std::string& strName, void* pData, uint32_t nSize)
+        template<typename T>
+        bool GetInput(const std::string& strName, T& data)
         {
             IIOData* pIO = GetIOData(strName, true);
 
             if(nullptr != pIO)
             {
-                return pIO->GetData(pData, nSize);
+                return pIO->GetData(data);
             }
 
             return false;
@@ -148,21 +145,21 @@ class ModuleIO : public IModuleIO
         }
 
     protected:
-        std::map<std::string, IIOData*> m_mapInput;
-        std::map<std::string, IIOData*> m_mapOutput;
+        std::unordered_map<std::string, IIOData*> m_mapInput;
+        std::unordered_map<std::string, IIOData*> m_mapOutput;
 };
 
-class TIModuleIO
+class TModuleIO
 {
     public:
-        TIModuleIO(IModuleIO* pIO) : m_pIO(pIO)
+        TModuleIO(ModuleIO* pIO) : m_pIO(pIO)
         {
         }
 
         template<typename T>
         bool SetOutput(const std::string& strName, const T& data)
         {
-            bool bSuccess = m_pIO->SetOutput(strName, &data, sizeof(T));
+            bool bSuccess = m_pIO->SetOutput(strName, data);
             assert(bSuccess == true);
             return bSuccess;
         }
@@ -170,23 +167,23 @@ class TIModuleIO
         template<typename T>
         T GetOutput(const std::string& strName)
         {
-            T data {};
-            bool bSuccess = m_pIO->GetOutput(strName, &data, sizeof(T));
+            std::any data {};
+            bool bSuccess = m_pIO->GetOutput(strName, data);
             assert(bSuccess == true);
-            return data;
+            return std::any_cast<T>(data);
         }
 
         template<typename T>
         T GetInput(const std::string& strName)
         {
-            T data {};
-            bool bSuccess = m_pIO->GetInput(strName, &data, sizeof(data));
+            std::any data {};
+            bool bSuccess = m_pIO->GetInput(strName, data);
             assert(bSuccess == true);
-            return data;
+            return std::any_cast<T>(data);
         }
 
     protected:
-        IModuleIO* m_pIO;
+        ModuleIO* m_pIO;
 };
 
 class TaskModule
@@ -292,7 +289,7 @@ template<typename TRunner, bool bIsCondition = false>
 class TModule : public TaskModule
 {
     public:
-        TModule() : m_tIModuleIO(&m_moduleIO)
+        TModule() : m_tModuleIO(&m_moduleIO)
     {
     }
 
@@ -308,7 +305,7 @@ class TModule : public TaskModule
 
         uint32_t Run() override
         {
-            return m_Runner.Run(&m_tIModuleIO);
+            return m_Runner.Run(&m_tModuleIO);
         }
 
         void SetInput(IIOData* p)
@@ -331,7 +328,7 @@ class TModule : public TaskModule
     private:
         TRunner m_Runner;
         ModuleIO m_moduleIO;
-        TIModuleIO m_tIModuleIO;
+        TModuleIO m_tModuleIO;
 };
 
 class TaskExecutor
@@ -537,9 +534,7 @@ class TaskExecutor
 class InitGlobal
 {
     public:
-        uint32_t Run(TIModuleIO* pIO)
-        {
-            //Log() <<"Run class output size:" << mapOutput.size() << "\n";
+        uint32_t Run(TModuleIO* pIO) {
             return 0;
         }
 
@@ -552,7 +547,7 @@ class InitGlobal
 class StartZmqSvr
 {
     public:
-        uint32_t Run(TIModuleIO* pIO)
+        uint32_t Run(TModuleIO* pIO)
         {
             Log() <<"StartZmqSvr Run begin\n";
 
@@ -579,7 +574,7 @@ class StartZmqSvr
 class ChkActState
 {
     public:
-        uint32_t Run(TIModuleIO* pIO)
+        uint32_t Run(TModuleIO* pIO)
         {
             Log() <<"Run class ChkActState\n";
             return 0;
@@ -594,7 +589,7 @@ class ChkActState
 class ChkOtaEvt
 {
     public:
-        uint32_t Run(TIModuleIO* pIO)
+        uint32_t Run(TModuleIO* pIO)
         {
             Log() <<"Run class ChkOtaEvt\n";
             uint32_t nOtaEvt = pIO->GetInput<uint32_t>("nOtaEvt");
@@ -610,7 +605,7 @@ class ChkOtaEvt
 class Activate
 {
     public:
-        uint32_t Run(TIModuleIO* pIO)
+        uint32_t Run(TModuleIO* pIO)
         {
             Log() <<"Run class Activate\n";
             return 0;
@@ -625,7 +620,7 @@ class Activate
 class Reboot
 {
     public:
-        uint32_t Run(TIModuleIO* pIO)
+        uint32_t Run(TModuleIO* pIO)
         {
             //Log() <<"Run class output size:" << mapOutput.size() << "\n";
             return 0;
@@ -640,7 +635,7 @@ class Reboot
 class Flash
 {
     public:
-        uint32_t Run(TIModuleIO* pIO)
+        uint32_t Run(TModuleIO* pIO)
         {
             Log() <<"Flash Run start\n";
 
@@ -670,7 +665,7 @@ class Flash
 class FlashEnd
 {
     public:
-        uint32_t Run(TIModuleIO* pIO)
+        uint32_t Run(TModuleIO* pIO)
         {
             Log() <<"Flash RunEnd start\n";
             return 1;
@@ -685,7 +680,7 @@ class FlashEnd
 class FlashSoc
 {
     public:
-        uint32_t Run(TIModuleIO* pIO)
+        uint32_t Run(TModuleIO* pIO)
         {
             Log() <<"Run class FlashSoc begin\n";
             uint32_t nSocProgress = pIO->GetOutput<uint32_t>("nSocProgress");
@@ -709,7 +704,7 @@ class FlashSoc
 class FlashMcu
 {
     public:
-        uint32_t Run(TIModuleIO* pIO)
+        uint32_t Run(TModuleIO* pIO)
         {
             Log() <<"Run class FlashMcu begin\n";
             uint32_t nMcuProgress = pIO->GetOutput<uint32_t>("nMcuProgress");
@@ -729,60 +724,38 @@ class FlashMcu
         }
 };
 
-template<typename DataType>
-class TIOPort
+class IIOPort
 {
     public:
-        virtual bool GetIOPortData(DataType& data)
-        {
-            return false;
-        }
-
-        virtual bool SetIOPortData(const DataType& data)
-        {
-            return false;
-        }
+        virtual bool GetIOPortData(std::any& data) = 0;
+        virtual bool SetIOPortData(const std::any& data) = 0;
 };
 
-template<typename DataType>
-class TIOPortAtomic : public TIOPort<DataType>
+template<typename T>
+class TIOPortAtomic : public IIOPort
 {
     public:
-        bool GetIOPortData(DataType& data) override
+        bool GetIOPortData(std::any& data) override
         {
             data = m_data.load(std::memory_order_relaxed);
             return true;
         }
 
-        bool SetIOPortData(const DataType& data) override
+        bool SetIOPortData(const std::any& data) override
         {
-            m_data.store(data, std::memory_order_relaxed);
+            m_data.store(std::any_cast<T>(data), std::memory_order_relaxed);
             return true;
         }
 
     protected:
-        std::atomic<DataType> m_data;
+        std::atomic<T> m_data;
 };
 
-class IOPortString : public TIOPort<std::string>
-{
-    public:
-        bool GetIOPortData(std::string& data) override
-        {
-            return false;
-        }
-
-        bool SetIOPortData(const std::string& data) override
-        {
-            return false;
-        }
-};
-
-template<typename ClassIOPort, typename DataType>
+template<typename ClassIOPort, typename T>
 class TIOData : public IIOData
 {
     public:
-        TIOData(const std::string& strName, const DataType& defVal) : m_strName(strName)
+        TIOData(const std::string& strName, const T& defVal) : m_strName(strName)
         {
             m_IOPort.SetIOPortData(defVal);
         }
@@ -804,30 +777,16 @@ class TIOData : public IIOData
             return m_strName;
         }
 
-        bool GetData(void* pDataBuf, uint32_t nBufSize) override
+        bool GetData(std::any& data) override
         {
-            if(nBufSize == sizeof(DataType))
-            {
-                DataType data {};
-                m_IOPort.GetIOPortData(data);
-                memcpy(pDataBuf, &data, sizeof(data));
-                return true;
-            }
-
-            return false;
+            m_IOPort.GetIOPortData(data);
+            return true;
         }
 
-        bool SetData(const void* pData, uint32_t nDataSize) override
+        bool SetData(const std::any& data) override
         {
-            if(sizeof(DataType) == nDataSize)
-            {
-                DataType data {};
-                memcpy(&data, pData, sizeof(data));
-                m_IOPort.SetIOPortData(data);
-                return true;
-            }
-
-            return false;
+            m_IOPort.SetIOPortData(data);
+            return true;
         }
 
     protected:
