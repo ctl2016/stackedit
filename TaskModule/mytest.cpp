@@ -12,6 +12,7 @@
 #include <typeinfo>
 #include <assert.h>
 #include <any>
+#include <type_traits>
 
 class Log final
 {
@@ -732,23 +733,40 @@ class IIOPort
 };
 
 template<typename T>
-class TIOPortAtomic : public IIOPort
+class TIOPort : public IIOPort
 {
     public:
         bool GetIOPortData(std::any& data) override
         {
-            data = m_data.load(std::memory_order_relaxed);
+            if constexpr (!std::is_trivially_copyable_v<T>) {
+                m_mutex.lock();
+                data = m_data;
+                m_mutex.unlock();
+            }
+            else {
+                data = m_data.load(std::memory_order_relaxed);
+            }
+
             return true;
         }
 
         bool SetIOPortData(const std::any& data) override
         {
-            m_data.store(std::any_cast<T>(data), std::memory_order_relaxed);
+            if constexpr (!std::is_trivially_copyable_v<T>) {
+                m_mutex.lock();
+                m_data = std::any_cast<T>(data);
+                m_mutex.unlock();
+            }
+            else {
+                m_data.store(std::any_cast<T>(data), std::memory_order_relaxed);
+            }
+
             return true;
         }
 
     protected:
-        std::atomic<T> m_data;
+        std::conditional_t<std::is_trivially_copyable_v<T>, std::atomic<T>, T> m_data;
+        std::conditional_t<!std::is_trivially_copyable_v<T>, std::mutex, bool> m_mutex;
 };
 
 template<typename ClassIOPort, typename T>
@@ -807,10 +825,10 @@ void test_module()
     TModule<FlashSoc>          modFlashSoc;
     TModule<FlashMcu>          modFlashMcu;
 
-    TIOData<TIOPortAtomic<uint32_t>, uint32_t>     socProgress("nSocProgress", 80);
-    TIOData<TIOPortAtomic<uint32_t>, uint32_t>     mcuProgress("nMcuProgress", 90);
-    TIOData<TIOPortAtomic<uint32_t>, uint32_t>     flashProgress("nFlashProgress", 0);
-    TIOData<TIOPortAtomic<uint32_t>, uint32_t>     otaEvt("nOtaEvt", 0);
+    TIOData<TIOPort<uint32_t>, uint32_t> socProgress("nSocProgress", 80);
+    TIOData<TIOPort<uint32_t>, uint32_t> mcuProgress("nMcuProgress", 90);
+    TIOData<TIOPort<uint32_t>, uint32_t> flashProgress("nFlashProgress", 0);
+    TIOData<TIOPort<uint32_t>, uint32_t> otaEvt("nOtaEvt", 0);
 
     // io flow
     socProgress.OutputOf(&modFlashSoc).InputOf(&modFlash);
