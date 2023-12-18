@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from IPython.display import clear_output
 import torchvision
 import sys
+import mplcursors
 
 def plot_loss(epoch, losses, clear=False):
     if clear:
@@ -18,13 +19,32 @@ def plot_loss(epoch, losses, clear=False):
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
 
-    plt.plot(epoch, losses)
+    # 获取当前的坐标轴
+    # gca = plt.gca()
+    # 设置 x 轴和 y 轴的刻度定位器为 AutoLocator
+    # gca.xaxis.set_major_locator(plt.AutoLocator())
+    # gca.yaxis.set_major_locator(plt.AutoLocator())
 
-    # 指定 x 轴坐标刻度
-    plt.xticks(epoch)
+    plt.plot(epoch, losses, label='loss', color='b', marker='o')
+
+    cumulative_sum = 0
+    average_values = []
+
+    for i in range(len(losses)):
+        cumulative_sum += losses[i]
+        current_average = cumulative_sum / (i + 1)  # 计算当前累积值的平均值
+        average_values.append(current_average)
+
+    plt.plot(epoch, average_values, label='average loss', color='r', marker='o')
+
+    #print("Average values after each element increment:", average_values)
+    
+    cursor = mplcursors.cursor(ax, hover=True)
+    cursor.connect("add", lambda sel: sel.annotation.set_text(f'x={sel.target[0]}, y={sel.target[1]}'))
+
     plt.draw()
     plt.pause(0.001)
-    plt.ioff()  # 关闭交互模式
+    #plt.ioff()  # 关闭交互模式
     plt.show()
 
 def show_pool_img(img):
@@ -119,13 +139,14 @@ class CNNB(nn.Module):
         self.pool1 = nn.MaxPool2d(kernel_size=8, stride=1)
         self.pool2 = nn.MaxPool2d(kernel_size=4, stride=1)
         self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.conv2_drop = nn.Dropout2d()
 
         self.fc1 = nn.Linear(64 * 10 * 10, 256)
         self.fc2 = nn.Linear(256, 10)
 
     def forward(self, x):
         x = self.pool1(self.relu(self.conv1(x)))
-        x = self.pool2(self.relu(self.conv2(x)))
+        x = self.pool2(self.relu(self.conv2_drop(self.conv2(x))))
         x = self.pool3(self.relu(self.conv3(x)))
         #print('x.shape1:', x.shape)
         #print('x.shape2:', x.shape)
@@ -137,3 +158,69 @@ class CNNB(nn.Module):
     def save_name(self):
         return 'model_cnn_b.pt'
 
+class CNNC(torch.nn.Module):
+    def __init__(self):
+        super(CNNC, self).__init__()
+        self.model = torch.nn.Sequential(
+            #The size of the picture is 28x28
+            torch.nn.Conv2d(in_channels = 1, out_channels = 20, kernel_size = 3, stride = 1,padding = 1),
+            torch.nn.ReLU(),
+            torch.nn.MaxPool2d(kernel_size = 4, stride = 2),
+            
+            #The size of the picture is 14x14
+            torch.nn.Conv2d(in_channels = 20, out_channels = 40,kernel_size = 3, stride = 1,padding = 1),
+            torch.nn.ReLU(),
+            torch.nn.MaxPool2d(kernel_size = 2, stride = 2),
+            
+            #The size of the picture is 7x7
+            torch.nn.Conv2d(in_channels = 40, out_channels = 80,kernel_size = 3, stride = 1,padding = 1),
+            torch.nn.ReLU(),
+            
+            torch.nn.Flatten(),
+            torch.nn.Linear(in_features = 4 * 4 * 80, out_features = 500),
+            torch.nn.ReLU(),
+            torch.nn.Linear(in_features = 500, out_features = 10),
+            torch.nn.Softmax(dim=1)
+        )
+        
+    def forward(self,input):
+        output = self.model(input)
+        return output
+
+    def save_name(self):
+        return 'model_cnn_c.pt'
+
+class CNNE(nn.Module):
+    def __init__(self, in_channels=1):
+        super(CNNE, self).__init__()
+        self.model = nn.Sequential(
+            nn.Conv2d(in_channels, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            # nn.Dropout(0.2),
+            #nn.MaxPool2d(kernel_size = 2, stride = 2),
+
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            # nn.LeakyReLU(0.2),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            # nn.Dropout(0.1),
+            nn.MaxPool2d(kernel_size = 2, stride = 2),
+
+            nn.Conv2d(128, 256, kernel_size=2, stride=1, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            # nn.Dropout(0.1),
+            nn.MaxPool2d(kernel_size = 2, stride = 2),
+
+            nn.Flatten(),
+            nn.Linear(256*7*7, 128),
+            nn.Linear(128, 10),
+            nn.Softmax(dim=1)
+        )
+
+    def forward(self, x):
+        return self.model(x)
+
+    def save_name(self):
+        return 'model_cnn_e.pt'
