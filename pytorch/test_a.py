@@ -14,7 +14,7 @@ import time
 from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score
 
 num_epochs = 5
-batch_size = 64
+batch_size = 128
 learning_rate = 0.0008
 
 class AddBorder(object):
