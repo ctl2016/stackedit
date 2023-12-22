@@ -159,3 +159,67 @@ for element, label in zip(prediction[0]['boxes'], predicted_classes):
 plt.show()
 
 print('prediction ok')
+
+
+# load onnx
+
+import onnx
+import onnxruntime
+import numpy as np
+import torch
+from PIL import Image, ImageOps
+import torchvision.transforms as transforms
+import matplotlib.pyplot as plt
+
+# 加载ONNX文件
+onnx_model = onnx.load("last.onnx")
+
+# 将ONNX文件转化为ORT格式
+ort_session = onnxruntime.InferenceSession("best.onnx")
+
+input_shape = ort_session.get_inputs()[0].shape
+print("Expected input shape:", input_shape)
+
+# 输入数据
+#input_data = np.random.random(size=(1, 3, 32, 32)).astype(np.float32)
+input_img = Image.open('2.png')
+
+# 可选：将图像转换为灰度图像
+input_img = input_img.convert('L')
+
+# 定义转换
+preprocess = transforms.Compose([
+    transforms.Resize((32, 32)),  # 调整大小为模型期望的输入尺寸
+    transforms.ToTensor(),  # 将图像转换为张量
+    #transforms.Normalize((0.5,), (0.5,))
+])
+
+# 应用转换
+input_data = preprocess(input_img)
+input_data = input_data.unsqueeze(0)  # 添加 batch 维度
+print(input_data.shape)
+input_data = input_data.expand(-1, 3, -1, -1)
+#input_data = torch.cat((input_data, input_data, input_data), dim=1)
+
+print(input_data.shape)
+
+# 将数据转换为 numpy 数组
+input_data_np = input_data.numpy()
+
+# 运行模型
+input_name = ort_session.get_inputs()[0].name
+output_name = ort_session.get_outputs()[0].name
+outputs = ort_session.run([output_name], {input_name: input_data_np})
+
+# 输出结果
+print(outputs)
+
+_, predicted = torch.max(torch.tensor(outputs[0]), 1)
+print("Predicted class:", predicted.item())
+
+input_data_np = input_data.squeeze().numpy()
+print(input_data_np.shape)
+img = np.transpose(input_data_np, (1, 2, 0))  # 调整通道顺序
+print(img.shape)
+plt.imshow(img)
+plt.show()
