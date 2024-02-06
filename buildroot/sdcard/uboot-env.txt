@@ -1,0 +1,11 @@
+loadaddr=0x61000000
+part_name=bootscr
+
+load_script=part start mmc 0 $part_name script_start && part size mmc 0 $part_name script_size;
+
+bootcmd=if run load_script; then \
+	mmc read $loadaddr $script_start $script_size; \
+	source $loadaddr; \
+else \
+	echo "load boot script failed !"; \
+fi;
