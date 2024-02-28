@@ -2,7 +2,7 @@
 选择：
 
 ashmem
-bind
+binder
 
 创建device节点：
 
