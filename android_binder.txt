@@ -1,0 +1,27 @@
+编译linux内核开启binder：
+选择：
+
+ashmem
+bind
+
+创建device节点：
+
+sudo mkdir -p /dev/binderfs/
+sudo mount -t binder none /dev/binderfs/
+sudo chmod 0666 /dev/binderfs/binder
+sudo ln /dev/binderfs/binder /dev/binder
+
+产生如下文件：
+
+/dev/binderfs/
+├── binder
+├── binder-control
+├── features
+│   └── oneway_spam_detection
+├── hwbinder
+└── vndbinder
+
+lrwxrwxrwx 1 root root 20 2024 02-28 18:08:42 /dev/binder -> /dev/binderfs/binder
+
+开启 service_manager 
+开启 server 和 client 端测试
